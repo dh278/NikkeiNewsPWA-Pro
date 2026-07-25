@@ -1,1 +1,1 @@
-export function extractCompanies(text,list){return list.filter(c=>text.includes(c));}
+export function extractCompanies(t,list){return list.filter(x=>t.includes(x));}

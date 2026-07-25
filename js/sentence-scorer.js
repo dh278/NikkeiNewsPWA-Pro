@@ -1,1 +1,1 @@
-export function top(sentences){return sentences.slice(0,5);}
+export function score(s){let p=0;if(/投資|工場|建設|増設/.test(s))p+=50;return p;}

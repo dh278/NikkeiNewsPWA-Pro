@@ -1,1 +1,1 @@
-export function stats(a){return {articles:a.length};}
+export function dashboard(a){return {count:a.length};}

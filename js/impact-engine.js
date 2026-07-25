@@ -1,1 +1,1 @@
-export function impact(s){return s>120?5:s>90?4:s>60?3:2;}
+export function impact(v){return v>100?5:3;}
