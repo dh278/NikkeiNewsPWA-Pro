@@ -1,0 +1,6 @@
+{
+  "name": "日経営業レーダー",
+  "short_name": "営業レーダー",
+  "display": "standalone",
+  "start_url": "."
+}

@@ -1,0 +1,1 @@
+const dbName="nikkei";function render(a){articles.innerHTML=a.map(x=>`<div class=card><h3>${x.title}</h3><button onclick="fav('${x.id}')">☆</button><p>${x.content.slice(0,120)}</p></div>`).join('')}let demo=[{id:'1',title:'サンプル記事',content:'記事本文',favorite:false}];render(demo);if('serviceWorker' in navigator){navigator.serviceWorker.register('service-worker.js')}
