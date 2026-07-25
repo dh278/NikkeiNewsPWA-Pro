@@ -1,1 +1,1 @@
-export function extractRegions(text,list){return list.filter(r=>text.includes(r));}
+export function extractRegions(t,list){return list.filter(x=>t.includes(x));}

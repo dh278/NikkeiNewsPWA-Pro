@@ -1,1 +1,1 @@
-export function impact(v){return v>80?"★★★★★":v>50?"★★★★☆":"★★★☆☆";}
+export function impact(v){return v>100?5:3;}

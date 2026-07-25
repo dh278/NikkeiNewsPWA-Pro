@@ -1,0 +1,1 @@
+export function radar(a){return a;}

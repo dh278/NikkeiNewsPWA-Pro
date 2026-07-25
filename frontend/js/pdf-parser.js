@@ -1,1 +1,1 @@
-// pdf-parser.js
+export async function parsePdf(f){return [];}
