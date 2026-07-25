@@ -1,1 +1,1 @@
-document.getElementById("dashboard").innerHTML="ダッシュボード";
+// Phase4 integrated app
