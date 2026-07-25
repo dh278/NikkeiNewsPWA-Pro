@@ -1,1 +1,0 @@
-export function top(sentences){return sentences.slice(0,5);}
