@@ -1,1 +1,1 @@
-const sample=[{title:"TDK新工場",content:"TDKは秋田県に500億円を投資して新工場を建設"}];
+document.getElementById("dashboard").innerHTML="ダッシュボード";
