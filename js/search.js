@@ -1,1 +1,0 @@
-export function search(a,q){return a.filter(x=>JSON.stringify(x).includes(q));}

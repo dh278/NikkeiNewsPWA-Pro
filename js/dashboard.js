@@ -1,1 +1,0 @@
-export function dashboard(a){return {count:a.length};}
