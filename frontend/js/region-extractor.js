@@ -1,1 +1,1 @@
-// region-extractor.js
+export function extractRegions(text,list){return list.filter(r=>text.includes(r));}

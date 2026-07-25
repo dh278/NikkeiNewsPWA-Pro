@@ -1,1 +1,1 @@
-// company-extractor.js
+export function extractCompanies(text,list){return list.filter(c=>text.includes(c));}

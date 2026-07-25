@@ -1,1 +1,1 @@
-// impact-engine.js
+export function impact(v){return v>80?"★★★★★":v>50?"★★★★☆":"★★★☆☆";}

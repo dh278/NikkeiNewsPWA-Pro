@@ -1,1 +1,1 @@
-// investment-extractor.js
+export function extractInvestment(text){const m=text.match(/([0-9０-９]+.*?億円)/);return m?m[1]:"";}
