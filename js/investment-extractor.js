@@ -1,0 +1,1 @@
+export function investment(t){const m=t.match(/([0-9０-９]+.*?億円)/);return m?m[1]:"";}

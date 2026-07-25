@@ -1,0 +1,1 @@
+export function extractRegions(t,list){return list.filter(x=>t.includes(x));}

@@ -1,0 +1,1 @@
+export function impact(v){return v>100?5:3;}
