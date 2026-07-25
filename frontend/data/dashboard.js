@@ -1,0 +1,1 @@
+export function stats(a){return {articles:a.length};}
