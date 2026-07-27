@@ -1,79 +1,78 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>日経営業レーダー Ver.4.1</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="style.css">
+<title>日経営業レーダー Ver.4.1</title>
 
-  </script>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="style.css">
+
+<script src="https://cdnjs.cloudflare.com/ajax/.5.136/pdf.min.js
+
 </head>
 
 <body>
 
-  <header>
-    <h1>日経営業レーダー Ver.4.1</h1>
-    <p>PDF読込・記事解析準備版</p>
-  </header>
+<h1>日経営業レーダー Ver.4.1</h1>
 
-  <hr>
+<p>PDF読込・記事解析準備版</p>
 
-  <section>
-    <h2>PDF取込</h2>
-    <input type="file" id="pdfFile" accept=".pdf,application/pdf">
-  </section>
+<hr>
 
-  <hr>
+<h2>PDF取込</h2>
 
-  <section>
-    <h2>ダッシュボード</h2>
-    <div id="dashboard">
-      <p>記事数：0</p>
-      <p>お気に入り：0</p>
-    </div>
-  </section>
+<input
+type="file"
+id="pdfFile"
+accept=".pdf,application/pdf"
+>
 
-  <hr>
+<hr>
 
-  <section>
-    <h2>検索</h2>
-    <input
-      type="text"
-      id="searchBox"
-      placeholder="企業名・地域・キーワードを入力"
-    >
-  </section>
+<h2>ダッシュボード</h2>
 
-  <hr>
+<div id="dashboard">
+<p>記事数：0</p>
+<p>お気に入り：0</p>
+</div>
 
-  <section>
-    <h2>記事一覧</h2>
-    <div id="articleList">
-      <p>記事はまだありません</p>
-    </div>
-  </section>
+<hr>
 
-  <hr>
+<h2>検索</h2>
 
-  <section>
-    <h2>PDF抽出結果</h2>
-    <div id="resultArea">
-      <p>PDFを選択してください</p>
-    </div>
-  </section>
+<input
+type="text"
+id="searchBox"
+placeholder="企業名・地域・キーワード"
+>
 
-  <hr>
+<hr>
 
-  <section>
-    <h2>記事詳細</h2>
-    <div id="articleDetail">
-      <p>記事を選択してください</p>
-    </div>
-  </section>
+<h2>記事一覧</h2>
 
-  <script src="app.js"></script>
+<div id="articleList">
+<p>記事はまだありません</p>
+</div>
+
+<hr>
+
+<h2>PDF抽出結果</h2>
+
+<div id="resultArea">
+<p>PDFを選択してください</p>
+</div>
+
+<hr>
+
+<h2>記事詳細</h2>
+
+<div id="articleDetail">
+<p>記事を選択してください</p>
+</div>
+
+<script src="app.js"></script>
 
 </body>
 </html>
