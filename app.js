@@ -206,6 +206,26 @@ function renderList() {
     ].join("");
 
     const investText = (a.investments || []).map(i => i.text).join(" / ");
+    const isSelected = a.id === state.selectedId;
+
+    const keySentencesHtml = (a.keySentences || []).map(s => `<li>${escapeHtml(s)}</li>`).join("");
+    const expandedHtml = isSelected
+      ? `
+        <div class="card-expanded">
+          <div class="detail-section">
+            <strong>企業:</strong> ${(a.companies || []).join("、") || "なし"}<br>
+            <strong>地域:</strong> ${(a.regions || []).join("、") || "なし"}<br>
+            <strong>投資額:</strong> ${(a.investments || []).map(i => i.text).join("、") || "なし"}<br>
+            <strong>案件種別:</strong> ${(a.dealTypes || []).join("、") || "なし"}
+          </div>
+          ${keySentencesHtml ? `<div class="detail-section"><strong>重要文</strong><ul>${keySentencesHtml}</ul></div>` : ""}
+          <div class="detail-section">
+            <strong>全文</strong>
+            <div class="body-text">${escapeHtml(a.body)}</div>
+          </div>
+        </div>
+      `
+      : "";
 
     li.innerHTML = `
       <div class="card-top">
@@ -215,7 +235,8 @@ function renderList() {
       <div class="card-stars">${starString(a.impactScore || 1)}</div>
       ${investText ? `<div class="card-invest">${escapeHtml(investText)}</div>` : ""}
       <div class="card-badges">${badges}</div>
-      <div class="card-meta">p.${a.pageNumber} ・ ${a.sourceMethod === "ocr" ? "OCR" : a.sourceMethod === "text" ? "テキスト抽出" : "抽出不可"}</div>
+      <div class="card-meta">p.${a.pageNumber} ・ ${a.sourceMethod === "ocr" ? "OCR" : a.sourceMethod === "text" ? "テキスト抽出" : "抽出不可"} ・ タップで${isSelected ? "折りたたむ" : "全文表示"}</div>
+      ${expandedHtml}
     `;
 
     li.querySelector(".fav-star").addEventListener("click", (ev) => {
@@ -264,7 +285,7 @@ function escapeHtml(str) {
 }
 
 function selectArticle(id) {
-  state.selectedId = id;
+  state.selectedId = state.selectedId === id ? null : id;
   render();
 }
 

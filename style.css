@@ -141,6 +141,16 @@ button {
 
 .card-meta { font-size: 11px; color: var(--muted); margin-top: 6px; }
 
+.card-expanded {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+.card-expanded .detail-section { margin-top: 10px; font-size: 13px; }
+.card-expanded .detail-section:first-child { margin-top: 0; }
+.card-expanded .body-text { white-space: pre-wrap; font-size: 13px; margin-top: 6px; color: #333; }
+.card-expanded ul { margin: 6px 0 0 0; padding-left: 18px; }
+
 .article-detail .empty { color: var(--muted); }
 .article-detail h3 { margin: 0 0 8px 0; font-size: 16px; }
 .detail-meta { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
