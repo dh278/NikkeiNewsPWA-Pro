@@ -13,9 +13,9 @@ const Extractor = (() => {
   async function loadData(baseUrl = "") {
     if (loaded) return;
     const [c, r, d] = await Promise.all([
-      fetch(`${baseUrl}data/companies.json`).then(res => res.json()),
-      fetch(`${baseUrl}data/regions.json`).then(res => res.json()),
-      fetch(`${baseUrl}data/deal-types.json`).then(res => res.json())
+      fetch(`${baseUrl}companies.json`).then(res => res.json()),
+      fetch(`${baseUrl}regions.json`).then(res => res.json()),
+      fetch(`${baseUrl}deal-types.json`).then(res => res.json())
     ]);
     companies = c;
     regions = r;
