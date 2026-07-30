@@ -71,6 +71,7 @@ const PdfProcessor = (() => {
       const { segments: textSegments, fullText } = await extractPageText(page);
       let segments;
       let method;
+      let pageFullText = fullText;
 
       if (isTextSufficient(fullText)) {
         segments = textSegments;
@@ -85,6 +86,7 @@ const PdfProcessor = (() => {
             ? visionResult.fullTextAnnotation.pages[0]
             : null;
         segments = visionPage ? SegmentUtils.segmentsFromVisionPage(visionPage) : [];
+        pageFullText = (visionResult.fullTextAnnotation && visionResult.fullTextAnnotation.text) || "";
         method = "ocr";
         ocrPageCount++;
       } else {
@@ -97,7 +99,13 @@ const PdfProcessor = (() => {
         continue;
       }
 
-      const pageArticles = SegmentUtils.groupSegmentsIntoArticles(segments, i);
+      // 日経電子版の「印刷用ページ」形式(書誌情報行に文字数が明記されている)なら
+      // 文字数ぴったりで記事を切り出せる高精度パーサーを優先的に使う。
+      // 該当しないPDF(紙面のスキャン等)ではnullが返るので、その場合のみ
+      // 見出しサイズのヒューリスティックにフォールバックする。
+      const indexedArticles = NikkeiIndexParser.parse(pageFullText, i);
+      const pageArticles = indexedArticles || SegmentUtils.groupSegmentsIntoArticles(segments, i);
+
       for (const a of pageArticles) {
         rawArticles.push({ ...a, sourceMethod: method });
       }
