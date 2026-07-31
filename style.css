@@ -132,6 +132,12 @@ button {
 
 .card-stars { font-size: 13px; color: #e0a800; margin-top: 4px; }
 .card-invest { font-size: 13px; color: var(--accent); font-weight: bold; margin-top: 4px; }
+.card-preview {
+  font-size: 13px;
+  color: #444;
+  margin-top: 6px;
+  line-height: 1.5;
+}
 
 .card-badges { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
 .badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; }

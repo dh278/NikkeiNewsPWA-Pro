@@ -21,7 +21,9 @@ const NikkeiIndexParser = (() => {
   const JUNK_LINES = new Set([
     "キーワードを入力してください",
     "きょうの新聞",
-    "きょうの新聞 きょうの新聞"
+    "きょうの新聞 きょうの新聞",
+    "PDF",
+    "ＰＤＦ"
   ]);
 
   const META_REGEX =
@@ -51,11 +53,11 @@ const NikkeiIndexParser = (() => {
   }
 
   /**
-   * @param {string} fullText  1ページ分の全文(改行込み)
-   * @param {number} pageNumber
+   * @param {string} fullText  文書全体(複数ページ分をつなげたもの)の全文
+   * @param {number} [fallbackPageNumber]  ページ番号が取れない場合の保険(通常は使われない)
    * @returns {Array<{headline, body, pageNumber}>|null}
    */
-  function parse(fullText, pageNumber) {
+  function parse(fullText, fallbackPageNumber) {
     if (!fullText) return null;
 
     const matches = [...fullText.matchAll(META_REGEX)];
@@ -64,12 +66,13 @@ const NikkeiIndexParser = (() => {
     const entries = matches.map(m => ({
       matchStart: m.index,
       matchEnd: m.index + m[0].length,
+      pageNo: parseInt(m[4], 10) || fallbackPageNumber || 0,
       charCount: parseInt(m[5], 10),
       headline: ""
     }));
 
     for (const e of entries) {
-      e.headline = extractHeadline(fullText, e.matchStart) || `(見出し不明) p.${pageNumber}`;
+      e.headline = extractHeadline(fullText, e.matchStart) || `(見出し不明) p.${e.pageNo}`;
     }
 
     // 見出し行+書誌情報行の範囲を除去して「本文プール」を作る。
@@ -125,7 +128,7 @@ const NikkeiIndexParser = (() => {
       articles.push({
         headline: e.headline,
         body,
-        pageNumber
+        pageNumber: e.pageNo
       });
     }
 

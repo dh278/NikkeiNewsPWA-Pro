@@ -60,9 +60,15 @@ const PdfProcessor = (() => {
     }).promise;
     const total = pdf.numPages;
 
-    const rawArticles = [];
+    // まず全ページ分のテキスト/セグメントを集める。
+    // このPDFの「ページ」はブラウザの印刷機能によるたまたまの区切りであり、
+    // 記事の途中で区切られることがあるため、ページ単位で記事分割すると
+    // 境目をまたぐ記事の見出しと本文がズレてしまう。そのため分割は
+    // 全ページ分のテキストをつなげた後にまとめて行う。
+    const pages = []; // {pageNumber, fullText, segments, method}
     let ocrPageCount = 0;
     let textPageCount = 0;
+    const noTextPages = [];
 
     for (let i = 1; i <= total; i++) {
       onProgress && onProgress(i, total, "テキスト抽出中");
@@ -90,25 +96,42 @@ const PdfProcessor = (() => {
         method = "ocr";
         ocrPageCount++;
       } else {
-        rawArticles.push({
-          headline: `(テキスト抽出不可) p.${i}`,
-          body: "このページは通常のテキスト抽出ができず、Google Vision APIキーも未設定のため内容を取得できませんでした。設定画面でAPIキーを登録すると自動でOCR処理されます。",
-          pageNumber: i,
-          sourceMethod: "none"
-        });
+        noTextPages.push(i);
         continue;
       }
 
-      // 日経電子版の「印刷用ページ」形式(書誌情報行に文字数が明記されている)なら
-      // 文字数ぴったりで記事を切り出せる高精度パーサーを優先的に使う。
-      // 該当しないPDF(紙面のスキャン等)ではnullが返るので、その場合のみ
-      // 見出しサイズのヒューリスティックにフォールバックする。
-      const indexedArticles = NikkeiIndexParser.parse(pageFullText, i);
-      const pageArticles = indexedArticles || SegmentUtils.groupSegmentsIntoArticles(segments, i);
+      pages.push({ pageNumber: i, fullText: pageFullText, segments, method });
+    }
 
-      for (const a of pageArticles) {
-        rawArticles.push({ ...a, sourceMethod: method });
+    const rawArticles = [];
+
+    // 日経電子版の「印刷用ページ」形式(書誌情報行に文字数が明記されている)なら
+    // 文字数ぴったりで記事を切り出せる高精度パーサーを、文書全体に対して一度だけ実行する。
+    // 該当しないPDF(紙面のスキャン等)ではnullが返るので、その場合のみ
+    // ページごとに見出しサイズのヒューリスティックへフォールバックする。
+    const documentFullText = pages.map(p => p.fullText).join("\n");
+    const indexedArticles = NikkeiIndexParser.parse(documentFullText);
+
+    if (indexedArticles) {
+      for (const a of indexedArticles) {
+        rawArticles.push({ ...a, sourceMethod: "text" });
       }
+    } else {
+      for (const p of pages) {
+        const pageArticles = SegmentUtils.groupSegmentsIntoArticles(p.segments, p.pageNumber);
+        for (const a of pageArticles) {
+          rawArticles.push({ ...a, sourceMethod: p.method });
+        }
+      }
+    }
+
+    for (const pageNo of noTextPages) {
+      rawArticles.push({
+        headline: `(テキスト抽出不可) p.${pageNo}`,
+        body: "このページは通常のテキスト抽出ができず、Google Vision APIキーも未設定のため内容を取得できませんでした。設定画面でAPIキーを登録すると自動でOCR処理されます。",
+        pageNumber: pageNo,
+        sourceMethod: "none"
+      });
     }
 
     return { rawArticles, totalPages: total, ocrPageCount, textPageCount };

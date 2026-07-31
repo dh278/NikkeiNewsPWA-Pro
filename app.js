@@ -43,7 +43,7 @@ document.getElementById("btn-save-key").addEventListener("click", () => {
   const key = document.getElementById("input-api-key").value.trim();
   setApiKey(key);
   const status = document.getElementById("key-status");
-  status.textContent = key ? "保存しました。" : "未設定として保存しました(OCRフォールバックは無効)。";
+  status.textContent = "保存しました。";
   status.className = "status ok";
 });
 
@@ -209,6 +209,14 @@ function renderList() {
     const isSelected = a.id === state.selectedId;
 
     const keySentencesHtml = (a.keySentences || []).map(s => `<li>${escapeHtml(s)}</li>`).join("");
+
+    // タップ前でも内容がイメージできるよう、重要文の先頭1文をプレビュー表示する
+    const previewSentence = (a.keySentences || [])[0];
+    const previewHtml =
+      !isSelected && previewSentence
+        ? `<div class="card-preview">${escapeHtml(previewSentence)}</div>`
+        : "";
+
     const expandedHtml = isSelected
       ? `
         <div class="card-expanded">
@@ -234,6 +242,7 @@ function renderList() {
       </div>
       <div class="card-stars">${starString(a.impactScore || 1)}</div>
       ${investText ? `<div class="card-invest">${escapeHtml(investText)}</div>` : ""}
+      ${previewHtml}
       <div class="card-badges">${badges}</div>
       <div class="card-meta">p.${a.pageNumber} ・ ${a.sourceMethod === "ocr" ? "OCR" : a.sourceMethod === "text" ? "テキスト抽出" : "抽出不可"} ・ タップで${isSelected ? "折りたたむ" : "全文表示"}</div>
       ${expandedHtml}
