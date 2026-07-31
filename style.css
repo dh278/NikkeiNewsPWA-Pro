@@ -135,9 +135,11 @@ button {
 .card-preview {
   font-size: 13px;
   color: #444;
-  margin-top: 6px;
+  margin: 6px 0 0 0;
+  padding-left: 18px;
   line-height: 1.5;
 }
+.card-preview li { margin-bottom: 2px; }
 
 .card-badges { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
 .badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; }

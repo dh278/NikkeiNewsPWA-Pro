@@ -210,26 +210,25 @@ function renderList() {
 
     const keySentencesHtml = (a.keySentences || []).map(s => `<li>${escapeHtml(s)}</li>`).join("");
 
-    // タップ前でも内容がイメージできるよう、重要文の先頭1文をプレビュー表示する
-    const previewSentence = (a.keySentences || [])[0];
+    // タップ前でも内容がイメージできるよう、重要文を全て(折りたたみ時も)プレビュー表示する
     const previewHtml =
-      !isSelected && previewSentence
-        ? `<div class="card-preview">${escapeHtml(previewSentence)}</div>`
+      !isSelected && keySentencesHtml
+        ? `<ul class="card-preview">${keySentencesHtml}</ul>`
         : "";
 
     const expandedHtml = isSelected
       ? `
         <div class="card-expanded">
           <div class="detail-section">
+            <strong>全文</strong>
+            <div class="body-text">${escapeHtml(a.body)}</div>
+          </div>
+          ${keySentencesHtml ? `<div class="detail-section"><strong>重要文</strong><ul>${keySentencesHtml}</ul></div>` : ""}
+          <div class="detail-section">
             <strong>企業:</strong> ${(a.companies || []).join("、") || "なし"}<br>
             <strong>地域:</strong> ${(a.regions || []).join("、") || "なし"}<br>
             <strong>投資額:</strong> ${(a.investments || []).map(i => i.text).join("、") || "なし"}<br>
             <strong>案件種別:</strong> ${(a.dealTypes || []).join("、") || "なし"}
-          </div>
-          ${keySentencesHtml ? `<div class="detail-section"><strong>重要文</strong><ul>${keySentencesHtml}</ul></div>` : ""}
-          <div class="detail-section">
-            <strong>全文</strong>
-            <div class="body-text">${escapeHtml(a.body)}</div>
           </div>
         </div>
       `
@@ -274,15 +273,15 @@ function renderDetail() {
       取込日時: ${new Date(a.createdAt).toLocaleString("ja-JP")}
     </div>
     <div class="detail-section">
+      <strong>全文</strong>
+      <div class="body-text">${escapeHtml(a.body)}</div>
+    </div>
+    ${keySentencesHtml ? `<div class="detail-section"><strong>重要文</strong><ul>${keySentencesHtml}</ul></div>` : ""}
+    <div class="detail-section">
       <strong>企業:</strong> ${(a.companies || []).join("、") || "なし"}<br>
       <strong>地域:</strong> ${(a.regions || []).join("、") || "なし"}<br>
       <strong>投資額:</strong> ${(a.investments || []).map(i => i.text).join("、") || "なし"}<br>
       <strong>案件種別:</strong> ${(a.dealTypes || []).join("、") || "なし"}
-    </div>
-    ${keySentencesHtml ? `<div class="detail-section"><strong>重要文</strong><ul>${keySentencesHtml}</ul></div>` : ""}
-    <div class="detail-section">
-      <strong>全文</strong>
-      <div class="body-text">${escapeHtml(a.body)}</div>
     </div>
   `;
 }

@@ -26,6 +26,32 @@ const NikkeiIndexParser = (() => {
     "ＰＤＦ"
   ]);
 
+  // 行の折り返され方によって「きょうの新聞きょうの新聞」のように
+  // スペースが消えたり、「キー」のように途中で千切れたりするため、
+  // 完全一致だけでなくパターンでも判定する。
+  function isJunkLine(rawLine) {
+    const line = rawLine.trim();
+    if (line.length === 0) return true;
+    if (JUNK_LINES.has(line)) return true;
+    if (/^きょうの新聞/.test(line)) return true;
+    if (line.length >= 2 && "キーワードを入力してください".startsWith(line)) return true;
+    return false;
+  }
+
+  // 段落の先頭(全角スペースなどの字下げ)で始まる行だけを改行として残し、
+  // それ以外の行(印刷時の折り返しによる改行)は単語の途中で千切れないよう
+  // そのままつなげる。日本語は単語間にスペースを入れないため、
+  // 単純な連結でよい。
+  function reflowParagraphs(text) {
+    const lines = text.split("\n").filter(l => l.length > 0);
+    let result = "";
+    for (const line of lines) {
+      const isParagraphStart = result === "" || /^[　\u3000]/.test(line);
+      result += isParagraphStart ? (result ? "\n" + line : line) : line;
+    }
+    return result;
+  }
+
   const META_REGEX =
     /(\d{4})\/(\d{2})\/(\d{2})\s*日本経済新聞\s*(?:朝刊|夕刊)?\s*(\d+)ページ\s*(\d+)文字[^\n]*/g;
   // 1行だけを対象に判定するための非グローバル版(lastIndex状態を共有しないよう分離)
@@ -39,7 +65,7 @@ const NikkeiIndexParser = (() => {
     const headlineLines = [];
     for (let i = lines.length - 1; i >= 0 && headlineLines.length < 3; i--) {
       const line = lines[i];
-      if (JUNK_LINES.has(line)) break;
+      if (isJunkLine(line)) break;
       // 前の記事の書誌情報行に行き当たったら、そこで見出し収集を止める
       if (META_LINE_REGEX.test(line)) break;
       headlineLines.unshift(line);
@@ -111,7 +137,7 @@ const NikkeiIndexParser = (() => {
     // 検索ボックスの文言などUI由来のノイズ行を本文プールからも除去
     bodyPool = bodyPool
       .split("\n")
-      .filter(line => !JUNK_LINES.has(line.trim()))
+      .filter(line => !isJunkLine(line))
       .join("\n");
 
     // 本文プールを先頭から文字数(改行除く)ぴったりで消費していく
@@ -124,7 +150,7 @@ const NikkeiIndexParser = (() => {
         if (bodyPool[poolIdx] !== "\n") consumedNonNewline++;
         poolIdx++;
       }
-      const body = bodyPool.slice(sliceStart, poolIdx).trim();
+      const body = reflowParagraphs(bodyPool.slice(sliceStart, poolIdx).trim());
       articles.push({
         headline: e.headline,
         body,
