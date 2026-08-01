@@ -234,8 +234,10 @@ function renderList() {
     if (isPdfViewOpen) {
       if (isPdfLoading) {
         pdfViewHtml = `<p class="ai-loading">PDFページを読み込み中...</p>`;
-      } else if (pdfImageCache[a.id]) {
-        pdfViewHtml = `<img class="pdf-page-image" src="${pdfImageCache[a.id]}" alt="元PDF p.${a.sourcePdfPage}">`;
+      } else if (pdfImageCache[a.id] && pdfImageCache[a.id].length) {
+        pdfViewHtml = pdfImageCache[a.id]
+          .map(img => `<img class="pdf-page-image" src="${img.dataUrl}" alt="元PDF p.${img.pageNum}">`)
+          .join("");
       }
     }
 
@@ -371,18 +373,27 @@ async function handleShowPdfPage(article) {
       cMapPacked: true
     }).promise;
 
-    const pageNum = Math.min(Math.max(1, article.sourcePdfPage), pdf.numPages);
-    const page = await pdf.getPage(pageNum);
-    const viewport = page.getViewport({ scale: 1.5 });
-    const canvas = document.createElement("canvas");
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    const ctx = canvas.getContext("2d");
-    await page.render({ canvasContext: ctx, viewport }).promise;
+    // 記事がページの区切りをまたいで後半が切れることがあるため、
+    // 現在のページに続けて次のページも一緒にレンダリングする。
+    const startPage = Math.min(Math.max(1, article.sourcePdfPage), pdf.numPages);
+    const pageNumsToRender = [startPage];
+    if (startPage + 1 <= pdf.numPages) pageNumsToRender.push(startPage + 1);
 
-    pdfImageCache[id] = canvas.toDataURL("image/png");
-    canvas.width = 0;
-    canvas.height = 0;
+    const images = [];
+    for (const pageNum of pageNumsToRender) {
+      const page = await pdf.getPage(pageNum);
+      const viewport = page.getViewport({ scale: 1.5 });
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext("2d");
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      images.push({ pageNum, dataUrl: canvas.toDataURL("image/png") });
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+
+    pdfImageCache[id] = images;
   } catch (err) {
     console.error(err);
     pdfImageCache[id] = null;
