@@ -6,8 +6,9 @@
 
 const NikkeiDB = (() => {
   const DB_NAME = "nikkei-radar-db";
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const STORE = "articles";
+  const PDF_STORE = "pdfs";
 
   let dbPromise = null;
 
@@ -21,6 +22,9 @@ const NikkeiDB = (() => {
           const store = db.createObjectStore(STORE, { keyPath: "id" });
           store.createIndex("favorite", "favorite", { unique: false });
           store.createIndex("createdAt", "createdAt", { unique: false });
+        }
+        if (!db.objectStoreNames.contains(PDF_STORE)) {
+          db.createObjectStore(PDF_STORE, { keyPath: "id" });
         }
       };
       req.onsuccess = (e) => resolve(e.target.result);
@@ -71,5 +75,27 @@ const NikkeiDB = (() => {
     });
   }
 
-  return { bulkAdd, put, getAll, clear };
+  // ---------- PDF本体の保存(元ページへのジャンプ機能用) ----------
+
+  async function savePdf(id, blob) {
+    const db = await open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(PDF_STORE, "readwrite");
+      tx.objectStore(PDF_STORE).put({ id, blob });
+      tx.oncomplete = () => resolve();
+      tx.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  async function getPdf(id) {
+    const db = await open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(PDF_STORE, "readonly");
+      const req = tx.objectStore(PDF_STORE).get(id);
+      req.onsuccess = () => resolve(req.result ? req.result.blob : null);
+      req.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  return { bulkAdd, put, getAll, clear, savePdf, getPdf };
 })();

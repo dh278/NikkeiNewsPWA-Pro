@@ -8,8 +8,14 @@ let state = {
   articles: [],
   selectedId: null,
   searchQuery: "",
-  favOnly: false
+  favOnly: false,
+  openPdfViewId: null,
+  pdfLoadingIds: new Set()
 };
+
+// レンダリング済みPDFページ画像のキャッシュ(articleId → dataURL)。
+// 永続化はせず、このセッション内だけの一時キャッシュ。
+const pdfImageCache = {};
 
 // ---------- 起動時チェック ----------
 
@@ -67,6 +73,8 @@ inputPdf.addEventListener("change", async (e) => {
   try {
     await Extractor.loadData("");
 
+    const pdfId = `pdf-${Date.now()}`;
+
     const { rawArticles, totalPages, ocrPageCount, textPageCount } = await PdfProcessor.processPdf(
       file,
       apiKey,
@@ -77,12 +85,16 @@ inputPdf.addEventListener("change", async (e) => {
       }
     );
 
+    // 「元のPDFを見る」機能のため、取り込んだPDF自体も保存しておく
+    await NikkeiDB.savePdf(pdfId, file);
+
     const analyzed = rawArticles.map(a =>
       Extractor.analyze({
         ...a,
         id: `art-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         favorite: false,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        pdfId
       })
     );
 
@@ -216,6 +228,17 @@ function renderList() {
         ? `<ul class="card-preview">${keySentencesHtml}</ul>`
         : "";
 
+    const isPdfViewOpen = state.openPdfViewId === a.id;
+    const isPdfLoading = state.pdfLoadingIds.has(a.id);
+    let pdfViewHtml = "";
+    if (isPdfViewOpen) {
+      if (isPdfLoading) {
+        pdfViewHtml = `<p class="ai-loading">PDFページを読み込み中...</p>`;
+      } else if (pdfImageCache[a.id]) {
+        pdfViewHtml = `<img class="pdf-page-image" src="${pdfImageCache[a.id]}" alt="元PDF p.${a.sourcePdfPage}">`;
+      }
+    }
+
     const expandedHtml = isSelected
       ? `
         <div class="card-expanded">
@@ -229,6 +252,12 @@ function renderList() {
             <strong>地域:</strong> ${(a.regions || []).join("、") || "なし"}<br>
             <strong>投資額:</strong> ${(a.investments || []).map(i => i.text).join("、") || "なし"}<br>
             <strong>案件種別:</strong> ${(a.dealTypes || []).join("、") || "なし"}
+          </div>
+          <div class="detail-section">
+            <button class="btn-show-pdf btn-secondary" data-id="${a.id}">
+              ${isPdfViewOpen ? "元のPDFを閉じる" : `元のPDFページを見る (p.${a.sourcePdfPage || "?"})`}
+            </button>
+            ${pdfViewHtml}
           </div>
         </div>
       `
@@ -251,6 +280,14 @@ function renderList() {
       ev.stopPropagation();
       toggleFavorite(a.id);
     });
+
+    const pdfBtn = li.querySelector(".btn-show-pdf");
+    if (pdfBtn) {
+      pdfBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        handleShowPdfPage(a);
+      });
+    }
 
     listEl.appendChild(li);
   }
@@ -295,6 +332,65 @@ function escapeHtml(str) {
 function selectArticle(id) {
   state.selectedId = state.selectedId === id ? null : id;
   render();
+}
+
+async function handleShowPdfPage(article) {
+  const id = article.id;
+
+  // 既に開いていれば閉じる(トグル)
+  if (state.openPdfViewId === id) {
+    state.openPdfViewId = null;
+    render();
+    return;
+  }
+
+  state.openPdfViewId = id;
+
+  if (pdfImageCache[id]) {
+    render();
+    return;
+  }
+
+  if (!article.pdfId || !article.sourcePdfPage) {
+    alert("このPDFの保存データが見つかりませんでした(古い取込データの可能性があります)。");
+    state.openPdfViewId = null;
+    return;
+  }
+
+  state.pdfLoadingIds.add(id);
+  render();
+
+  try {
+    const blob = await NikkeiDB.getPdf(article.pdfId);
+    if (!blob) throw new Error("保存されたPDFが見つかりません。再取込みが必要です。");
+
+    const arrayBuffer = await blob.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({
+      data: arrayBuffer,
+      cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/",
+      cMapPacked: true
+    }).promise;
+
+    const pageNum = Math.min(Math.max(1, article.sourcePdfPage), pdf.numPages);
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale: 1.5 });
+    const canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext("2d");
+    await page.render({ canvasContext: ctx, viewport }).promise;
+
+    pdfImageCache[id] = canvas.toDataURL("image/png");
+    canvas.width = 0;
+    canvas.height = 0;
+  } catch (err) {
+    console.error(err);
+    pdfImageCache[id] = null;
+    alert("PDFページの表示に失敗しました: " + err.message);
+  } finally {
+    state.pdfLoadingIds.delete(id);
+    render();
+  }
 }
 
 async function toggleFavorite(id) {

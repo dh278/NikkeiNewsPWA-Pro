@@ -159,6 +159,16 @@ button {
 .card-expanded .body-text { white-space: pre-wrap; font-size: 13px; margin-top: 6px; color: #333; }
 .card-expanded ul { margin: 6px 0 0 0; padding-left: 18px; }
 
+.btn-show-pdf { font-size: 13px; padding: 8px 14px; }
+.ai-loading { font-size: 13px; color: var(--muted); font-style: italic; }
+.pdf-page-image {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
 .article-detail .empty { color: var(--muted); }
 .article-detail h3 { margin: 0 0 8px 0; font-size: 16px; }
 .detail-meta { font-size: 12px; color: var(--muted); margin-bottom: 10px; }

@@ -105,6 +105,25 @@ const PdfProcessor = (() => {
 
     const rawArticles = [];
 
+    // 全ページ結合後の文字列中で、各ページのテキストがどこから始まるかを記録しておく。
+    // 記事分割後、書誌情報行の位置(metaStart)からこのオフセット表を逆引きすれば、
+    // 「元のPDFの何ページ目付近にあった記事か」がわかる(＝元PDFジャンプ機能に使う)。
+    let cursor = 0;
+    const pageOffsets = pages.map(p => {
+      const offset = cursor;
+      cursor += p.fullText.length + 1; // +1 は join("\n") の区切り文字ぶん
+      return { pdfPageIndex: p.pageNumber, offset };
+    });
+
+    function findPdfPageIndex(charPos) {
+      let found = pages.length ? pages[0].pageNumber : 1;
+      for (const po of pageOffsets) {
+        if (po.offset <= charPos) found = po.pdfPageIndex;
+        else break;
+      }
+      return found;
+    }
+
     // 日経電子版の「印刷用ページ」形式(書誌情報行に文字数が明記されている)なら
     // 文字数ぴったりで記事を切り出せる高精度パーサーを、文書全体に対して一度だけ実行する。
     // 該当しないPDF(紙面のスキャン等)ではnullが返るので、その場合のみ
@@ -113,14 +132,18 @@ const PdfProcessor = (() => {
     const indexedArticles = NikkeiIndexParser.parse(documentFullText);
 
     if (indexedArticles) {
-      for (const a of indexedArticles) {
-        rawArticles.push({ ...a, sourceMethod: "text" });
+      for (const { metaStart, ...a } of indexedArticles) {
+        rawArticles.push({
+          ...a,
+          sourceMethod: "text",
+          sourcePdfPage: findPdfPageIndex(metaStart)
+        });
       }
     } else {
       for (const p of pages) {
         const pageArticles = SegmentUtils.groupSegmentsIntoArticles(p.segments, p.pageNumber);
         for (const a of pageArticles) {
-          rawArticles.push({ ...a, sourceMethod: p.method });
+          rawArticles.push({ ...a, sourceMethod: p.method, sourcePdfPage: p.pageNumber });
         }
       }
     }

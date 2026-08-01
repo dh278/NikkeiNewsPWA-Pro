@@ -154,7 +154,10 @@ const NikkeiIndexParser = (() => {
       articles.push({
         headline: e.headline,
         body,
-        pageNumber: e.pageNo
+        pageNumber: e.pageNo,
+        // 呼び出し側(pdf-processor.js)がこの位置から、元PDFの何ページ目に
+        // 書誌情報行があったかを逆引きして「元のPDFを見る」機能に使う。
+        metaStart: e.matchStart
       });
     }
 
