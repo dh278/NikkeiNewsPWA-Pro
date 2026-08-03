@@ -46,6 +46,13 @@
     <button id="btn-close-settings" class="btn-secondary">閉じる</button>
   </div>
   <p id="key-status" class="status"></p>
+
+  <div class="btn-row" style="margin-top:24px; border-top:1px solid var(--line); padding-top:16px;">
+    <button id="btn-clear-all" class="btn-danger">全データを削除</button>
+  </div>
+  <p class="hint">
+    保存済みの記事・PDFを全て消去します(元に戻せません)。
+  </p>
 </section>
 
 <!-- PDF取込 -->
@@ -74,9 +81,9 @@
   </ul>
 </section>
 
-<script src="db.js?v=1"></script>
-<script src="pdf-processor.js?v=1"></script>
-<script src="gemini-extract.js?v=1"></script>
-<script src="app.js?v=1"></script>
+<script src="db.js?v=2"></script>
+<script src="pdf-processor.js?v=2"></script>
+<script src="gemini-extract.js?v=2"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>

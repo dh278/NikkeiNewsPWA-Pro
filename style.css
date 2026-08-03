@@ -94,6 +94,7 @@ button {
 }
 .btn-primary { background: var(--accent); color: white; }
 .btn-secondary { background: #eee; color: var(--ink); }
+.btn-danger { background: var(--danger); color: white; }
 .btn-icon { background: none; border: 1px solid var(--line); padding: 6px 12px; font-size: 13px; }
 
 .status { font-size: 13px; margin-top: 8px; }

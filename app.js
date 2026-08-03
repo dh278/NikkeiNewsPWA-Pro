@@ -51,6 +51,16 @@ document.getElementById("btn-save-key").addEventListener("click", () => {
   status.className = "status " + (key ? "ok" : "error");
 });
 
+document.getElementById("btn-clear-all").addEventListener("click", async () => {
+  if (!confirm("保存済みの記事とPDFを全て削除します。よろしいですか?")) return;
+  await NikkeiDB.clearAll();
+  state.articles = [];
+  state.selectedId = null;
+  state.openPdfViewId = null;
+  render();
+  alert("削除しました。");
+});
+
 // ---------- PDF取込 ----------
 
 const inputPdf = document.getElementById("input-pdf");

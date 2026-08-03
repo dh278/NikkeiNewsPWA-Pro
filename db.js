@@ -5,7 +5,7 @@
  */
 
 const NikkeiDB = (() => {
-  const DB_NAME = "nikkei-radar-db";
+  const DB_NAME = "nikkei-radar-v5-db";
   const DB_VERSION = 2;
   const STORE = "articles";
   const PDF_STORE = "pdfs";
@@ -75,6 +75,17 @@ const NikkeiDB = (() => {
     });
   }
 
+  async function clearAll() {
+    const db = await open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([STORE, PDF_STORE], "readwrite");
+      tx.objectStore(STORE).clear();
+      tx.objectStore(PDF_STORE).clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = (e) => reject(e.target.error);
+    });
+  }
+
   // ---------- PDF本体の保存(元ページへのジャンプ機能用) ----------
 
   async function savePdf(id, blob) {
@@ -97,5 +108,5 @@ const NikkeiDB = (() => {
     });
   }
 
-  return { bulkAdd, put, getAll, clear, savePdf, getPdf };
+  return { bulkAdd, put, getAll, clear, clearAll, savePdf, getPdf };
 })();
