@@ -51,10 +51,6 @@ body {
   border: 1px solid var(--line);
   border-radius: var(--radius);
 }
-.panel-search-top {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
 .panel h2 {
   font-size: 15px;
   margin: 0 0 14px 0;
@@ -94,7 +90,6 @@ button {
 }
 .btn-primary { background: var(--accent); color: white; }
 .btn-secondary { background: #eee; color: var(--ink); }
-.btn-danger { background: var(--danger); color: white; }
 .btn-icon { background: none; border: 1px solid var(--line); padding: 6px 12px; font-size: 13px; }
 
 .status { font-size: 13px; margin-top: 8px; }
@@ -106,12 +101,18 @@ button {
 .progress-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.2s; }
 #progress-label { font-size: 12px; color: var(--muted); margin-top: 6px; }
 
-.dashboard { display: flex; gap: 20px; }
+.dashboard { display: flex; gap: 20px; margin-bottom: 16px; }
 .stat { flex: 1; text-align: center; padding: 14px 0; background: var(--accent-soft); border-radius: var(--radius); }
 .stat span { display: block; font-size: 26px; font-weight: bold; color: var(--accent); }
 .stat label { font-size: 12px; color: var(--muted); margin: 0; }
 
-.card-list { list-style: none; margin: 0; padding: 0; max-height: 600px; overflow-y: auto; }
+.breakdown-grid { display: flex; flex-direction: column; gap: 14px; }
+.breakdown h3 { font-size: 13px; color: var(--muted); margin: 0 0 6px 0; }
+.breakdown-list { list-style: decimal; margin: 0; padding-left: 20px; font-size: 13px; }
+.breakdown-list li { padding: 3px 0; cursor: pointer; }
+.breakdown-list li.empty { color: var(--muted); list-style: none; margin-left: -20px; cursor: default; }
+
+.card-list { list-style: none; margin: 0; padding: 0; max-height: 520px; overflow-y: auto; }
 .card-list li.empty { color: var(--muted); padding: 10px 0; }
 
 .sales-card {
@@ -129,11 +130,36 @@ button {
 .fav-star { cursor: pointer; color: #ccc; font-size: 18px; line-height: 1; }
 .fav-star.active { color: #e0a800; }
 
-.card-summary { font-size: 13px; color: #333; margin-top: 6px; line-height: 1.6; }
+.card-stars { font-size: 13px; color: #e0a800; margin-top: 4px; }
+.card-invest { font-size: 13px; color: var(--accent); font-weight: bold; margin-top: 4px; }
+.card-preview {
+  font-size: 13px;
+  color: #444;
+  margin: 6px 0 0 0;
+  padding-left: 18px;
+  line-height: 1.5;
+}
+.card-preview li { margin-bottom: 2px; }
 
-.card-badges { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
+/* Gemini AI要約プレビュー: タップで元PDFページを開けることが分かるようリンク調に */
+.card-preview.gemini-summary {
+  padding-left: 0;
+  color: #333;
+  cursor: pointer;
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
+}
+.card-preview.gemini-summary:hover { background: var(--accent-soft); }
+.card-preview.raw-note { color: var(--muted); font-style: italic; }
+
+.detail-section.history { background: #fdf8ee; border-radius: var(--radius); padding: 8px 10px; }
+.detail-section.history strong { color: #8a5a00; }
+
+.card-badges { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
 .badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
 .badge-company { background: #eaf1fb; color: #1a4d8f; }
+.badge-region { background: #eafbea; color: #1a7a3a; }
+.badge-deal { background: #fdf3e0; color: #8a5a00; }
 
 .card-meta { font-size: 11px; color: var(--muted); margin-top: 6px; }
 
@@ -142,7 +168,10 @@ button {
   padding-top: 10px;
   border-top: 1px dashed var(--line);
 }
-.detail-section { margin-top: 0; font-size: 13px; }
+.card-expanded .detail-section { margin-top: 10px; font-size: 13px; }
+.card-expanded .detail-section:first-child { margin-top: 0; }
+.card-expanded .body-text { white-space: pre-wrap; font-size: 13px; margin-top: 6px; color: #333; }
+.card-expanded ul { margin: 6px 0 0 0; padding-left: 18px; }
 
 .btn-show-pdf { font-size: 13px; padding: 8px 14px; }
 .ai-loading { font-size: 13px; color: var(--muted); font-style: italic; }
@@ -153,3 +182,10 @@ button {
   border: 1px solid var(--line);
   border-radius: var(--radius);
 }
+
+.article-detail .empty { color: var(--muted); }
+.article-detail h3 { margin: 0 0 8px 0; font-size: 16px; }
+.detail-meta { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.detail-section { margin-top: 12px; font-size: 14px; }
+.detail-section ul { margin: 6px 0 0 0; padding-left: 20px; }
+.body-text { white-space: pre-wrap; font-size: 13px; margin-top: 6px; color: #333; }

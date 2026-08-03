@@ -19,61 +19,94 @@
   pdf.jsライブラリの読み込みに失敗しました。通信環境を確認し、ページを再読み込みしてください。
 </div>
 
-<!-- 企業名検索(一番上に配置) -->
-<section class="panel panel-search-top">
-  <label for="input-search">企業名・キーワードで検索</label>
-  <input type="text" id="input-search" placeholder="例: トヨタ、半導体 など">
-  <label class="checkbox-row">
-    <input type="checkbox" id="filter-fav-only"> お気に入りのみ表示
-  </label>
-</section>
-
 <!-- 設定パネル -->
 <section id="panel-settings" class="panel hidden">
   <h2>設定</h2>
-  <label for="input-gemini-key">Google Gemini API キー</label>
-  <input type="password" id="input-gemini-key" placeholder="AIza... で始まるキーを入力">
+  <label for="input-api-key">Google Cloud Vision API キー(任意)</label>
+  <input type="password" id="input-api-key" placeholder="AIza... で始まるキーを入力">
   <p class="hint">
-    紙面PDFの各ページを画像としてGemini APIに送り、記事の見出し・要約・登場企業を
-    まとめて抽出します。無料枠の範囲内で使う想定です(モデル: gemini-3.1-flash-lite)。
-    キーはこの端末のブラウザ内(IndexedDB/localStorage)にのみ保存され、
-    実行時にGoogleのAPIへ直接送信されます。無料枠の入力内容はGoogle側の
-    サービス改善に利用される場合がある点はご留意ください。
-    APIキーは https://aistudio.google.com/ から発行できます。
+    基本方針はPDFからの直接テキスト抽出です。APIキーは、テキスト抽出できないページが
+    見つかった場合のみ、そのページに限定してOCRに使用されます(コスト最小化)。
+    未設定でも動作しますが、その場合抽出できなかったページは内容が空のまま記録されます。
+    APIキーはこの端末のブラウザ内(IndexedDB/localStorage)にのみ保存され、サーバーには送信されません。
+    Google Cloud Consoleで「HTTPリファラー制限」の設定を推奨します。
   </p>
+
+  <label for="input-gemini-key">Google Gemini API キー(AI要約・過去の関連動向の生成に使用)</label>
+  <input type="password" id="input-gemini-key" placeholder="Google AI Studioで取得した無料キーを入力">
+  <p class="hint">
+    記事の300字要約と「過去の関連動向」の生成にGemini API(gemini-3.5-flash)を使用します。
+    無料枠の範囲で利用可能です。キーはこの端末のブラウザ内にのみ保存され、サーバーには送信されません。
+    <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>で無料取得できます。
+  </p>
+
   <div class="btn-row">
     <button id="btn-save-key" class="btn-primary">保存</button>
     <button id="btn-close-settings" class="btn-secondary">閉じる</button>
   </div>
   <p id="key-status" class="status"></p>
-
-  <div class="btn-row" style="margin-top:24px; border-top:1px solid var(--line); padding-top:16px;">
-    <button id="btn-clear-all" class="btn-danger">全データを削除</button>
-  </div>
-  <p class="hint">
-    保存済みの記事・PDFを全て消去します(元に戻せません)。
-  </p>
 </section>
 
 <!-- PDF取込 -->
 <section class="panel">
   <h2>PDF取込</h2>
   <input type="file" id="input-pdf" accept="application/pdf">
-  <div id="progress-wrap" class="progress hidden">
+  <div id="ocr-progress" class="progress hidden">
     <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
     <p id="progress-label">処理中...</p>
   </div>
 </section>
 
+<!-- Gemini AI要約 -->
+<section class="panel">
+  <h2>AI要約(Gemini)</h2>
+  <p class="hint">
+    紙面全体(1面〜最終面、短信・コラム・連載も含む)の記事について、見出しと300字程度の
+    要約を一括生成します。あわせて、各記事のトピックに関する「過去の関連動向」も生成します。
+    人事異動やマーケットの数表はAI要約を行わず、本文をそのまま表示します。
+  </p>
+  <div class="btn-row">
+    <button id="btn-gemini-summarize" class="btn-primary">AI要約を実行</button>
+  </div>
+  <div id="gemini-progress" class="progress hidden">
+    <div class="progress-bar"><div id="gemini-progress-fill" class="progress-fill"></div></div>
+    <p id="gemini-progress-label">処理中...</p>
+  </div>
+</section>
+
 <!-- ダッシュボード -->
 <section class="panel">
+  <h2>ダッシュボード</h2>
   <div class="dashboard">
     <div class="stat"><span id="stat-count">0</span><label>総記事数</label></div>
     <div class="stat"><span id="stat-fav">0</span><label>お気に入り</label></div>
   </div>
+  <div class="breakdown-grid">
+    <div class="breakdown">
+      <h3>企業別件数</h3>
+      <ol id="breakdown-companies" class="breakdown-list"><li class="empty">データなし</li></ol>
+    </div>
+    <div class="breakdown">
+      <h3>地域別件数</h3>
+      <ol id="breakdown-regions" class="breakdown-list"><li class="empty">データなし</li></ol>
+    </div>
+    <div class="breakdown">
+      <h3>投資額ランキング</h3>
+      <ol id="breakdown-investments" class="breakdown-list"><li class="empty">データなし</li></ol>
+    </div>
+  </div>
 </section>
 
-<!-- 記事一覧 -->
+<!-- 検索 -->
+<section class="panel">
+  <h2>検索</h2>
+  <input type="text" id="input-search" placeholder="タイトル・本文・企業名・地域名・案件種別で検索">
+  <label class="checkbox-row">
+    <input type="checkbox" id="filter-fav-only"> お気に入りのみ表示
+  </label>
+</section>
+
+<!-- 記事一覧(営業カード) -->
 <section class="panel">
   <h2>記事一覧</h2>
   <ul id="article-list" class="card-list">
@@ -81,9 +114,21 @@
   </ul>
 </section>
 
-<script src="db.js?v=3"></script>
-<script src="pdf-processor.js?v=3"></script>
-<script src="gemini-extract.js?v=3"></script>
-<script src="app.js?v=3"></script>
+<!-- 記事詳細 -->
+<section class="panel">
+  <h2>記事詳細</h2>
+  <div id="article-detail" class="article-detail">
+    <p class="empty">記事を選択してください</p>
+  </div>
+</section>
+
+<script src="db.js?v=5"></script>
+<script src="vision-ocr.js?v=5"></script>
+<script src="segment-utils.js?v=5"></script>
+<script src="extractor.js?v=5"></script>
+<script src="nikkei-index-parser.js?v=5"></script>
+<script src="pdf-processor.js?v=5"></script>
+<script src="gemini-summarizer.js?v=5"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>
