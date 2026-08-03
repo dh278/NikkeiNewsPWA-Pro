@@ -35,7 +35,7 @@
   <input type="password" id="input-gemini-key" placeholder="AIza... で始まるキーを入力">
   <p class="hint">
     紙面PDFの各ページを画像としてGemini APIに送り、記事の見出し・要約・登場企業を
-    まとめて抽出します。無料枠の範囲内で使う想定です(モデル: gemini-2.5-flash-lite)。
+    まとめて抽出します。無料枠の範囲内で使う想定です(モデル: gemini-3.1-flash-lite)。
     キーはこの端末のブラウザ内(IndexedDB/localStorage)にのみ保存され、
     実行時にGoogleのAPIへ直接送信されます。無料枠の入力内容はGoogle側の
     サービス改善に利用される場合がある点はご留意ください。
@@ -81,9 +81,9 @@
   </ul>
 </section>
 
-<script src="db.js?v=2"></script>
-<script src="pdf-processor.js?v=2"></script>
-<script src="gemini-extract.js?v=2"></script>
-<script src="app.js?v=2"></script>
+<script src="db.js?v=3"></script>
+<script src="pdf-processor.js?v=3"></script>
+<script src="gemini-extract.js?v=3"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>

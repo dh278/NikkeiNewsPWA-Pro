@@ -9,7 +9,7 @@ const GeminiExtract = (() => {
   // 無料枠で継続的に使えるモデル。Googleはモデル名・無料枠の内容を
   // 頻繁に更新するため、動かない場合は https://aistudio.google.com/ で
   // 現行の無料利用可能モデル名を確認して書き換えること。
-  const MODEL = "gemini-2.5-flash-lite";
+  const MODEL = "gemini-3.1-flash-lite";
 
   // 1回のリクエストで送るページ数(送信データ量とトークン量を抑えるため分割する)
   const BATCH_SIZE = 12;
