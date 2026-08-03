@@ -1,0 +1,9 @@
+{
+  "name": "日経営業レーダー",
+  "short_name": "営業レーダー",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#fafaf8",
+  "theme_color": "#1a4d8f",
+  "icons": []
+}

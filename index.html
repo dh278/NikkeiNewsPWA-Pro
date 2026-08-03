@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>日経営業レーダー Ver.5</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+
+<header class="app-header">
+  <h1>日経営業レーダー <span class="version">Ver.5</span></h1>
+  <button id="btn-settings" class="btn-icon">設定</button>
+</header>
+
+<div id="lib-error" class="banner-error hidden">
+  pdf.jsライブラリの読み込みに失敗しました。通信環境を確認し、ページを再読み込みしてください。
+</div>
+
+<!-- 企業名検索(一番上に配置) -->
+<section class="panel panel-search-top">
+  <label for="input-search">企業名・キーワードで検索</label>
+  <input type="text" id="input-search" placeholder="例: トヨタ、半導体 など">
+  <label class="checkbox-row">
+    <input type="checkbox" id="filter-fav-only"> お気に入りのみ表示
+  </label>
+</section>
+
+<!-- 設定パネル -->
+<section id="panel-settings" class="panel hidden">
+  <h2>設定</h2>
+  <label for="input-gemini-key">Google Gemini API キー</label>
+  <input type="password" id="input-gemini-key" placeholder="AIza... で始まるキーを入力">
+  <p class="hint">
+    紙面PDFの各ページを画像としてGemini APIに送り、記事の見出し・要約・登場企業を
+    まとめて抽出します。無料枠の範囲内で使う想定です(モデル: gemini-2.5-flash-lite)。
+    キーはこの端末のブラウザ内(IndexedDB/localStorage)にのみ保存され、
+    実行時にGoogleのAPIへ直接送信されます。無料枠の入力内容はGoogle側の
+    サービス改善に利用される場合がある点はご留意ください。
+    APIキーは https://aistudio.google.com/ から発行できます。
+  </p>
+  <div class="btn-row">
+    <button id="btn-save-key" class="btn-primary">保存</button>
+    <button id="btn-close-settings" class="btn-secondary">閉じる</button>
+  </div>
+  <p id="key-status" class="status"></p>
+</section>
+
+<!-- PDF取込 -->
+<section class="panel">
+  <h2>PDF取込</h2>
+  <input type="file" id="input-pdf" accept="application/pdf">
+  <div id="progress-wrap" class="progress hidden">
+    <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+    <p id="progress-label">処理中...</p>
+  </div>
+</section>
+
+<!-- ダッシュボード -->
+<section class="panel">
+  <div class="dashboard">
+    <div class="stat"><span id="stat-count">0</span><label>総記事数</label></div>
+    <div class="stat"><span id="stat-fav">0</span><label>お気に入り</label></div>
+  </div>
+</section>
+
+<!-- 記事一覧 -->
+<section class="panel">
+  <h2>記事一覧</h2>
+  <ul id="article-list" class="card-list">
+    <li class="empty">記事はまだありません</li>
+  </ul>
+</section>
+
+<script src="js/db.js?v=1"></script>
+<script src="js/pdf-processor.js?v=1"></script>
+<script src="js/gemini-extract.js?v=1"></script>
+<script src="app.js?v=1"></script>
+</body>
+</html>
