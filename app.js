@@ -115,24 +115,32 @@ inputPdf.addEventListener("change", async (e) => {
       progressLabel.textContent = `Geminiで記事を解析中... (${curBatch}/${totalBatches}バッチ)`;
     });
 
-    // 3. 各記事に、元ページの画像と新聞の日付をそのまま持たせる
+    // 3. 各記事に、元ページの画像と新聞の日付をそのまま持たせる。
+    //    記事本文が次ページへ続いていて見切れることがあるため、
+    //    見出しのあるページに加えて次ページの画像も一緒に持たせておく。
     const imageByPage = {};
     for (const img of images) imageByPage[img.pageNum] = img.dataUrl;
 
-    const analyzed = rawArticles.map((a) => ({
-      id: `art-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      favorite: false,
-      createdAt: new Date().toISOString(),
-      pdfId,
-      newspaperDate,
-      pageNumber: a.page,
-      headline: a.headline || "(見出し不明)",
-      isRawArticle: !!a.isRaw,
-      summary: a.summary || "",
-      history: a.history || "",
-      companies: Array.isArray(a.companies) ? a.companies : [],
-      pageImageDataUrl: imageByPage[a.page] || null,
-    }));
+    const analyzed = rawArticles.map((a) => {
+      const pageImages = [];
+      if (imageByPage[a.page]) pageImages.push({ pageNum: a.page, dataUrl: imageByPage[a.page] });
+      if (imageByPage[a.page + 1]) pageImages.push({ pageNum: a.page + 1, dataUrl: imageByPage[a.page + 1] });
+
+      return {
+        id: `art-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        favorite: false,
+        createdAt: new Date().toISOString(),
+        pdfId,
+        newspaperDate,
+        pageNumber: a.page,
+        headline: a.headline || "(見出し不明)",
+        isRawArticle: !!a.isRaw,
+        summary: a.summary || "",
+        history: a.history || "",
+        companies: Array.isArray(a.companies) ? a.companies : [],
+        pageImages,
+      };
+    });
 
     await NikkeiDB.bulkAdd(analyzed);
     state.articles = [...analyzed, ...state.articles];
@@ -231,6 +239,20 @@ function renderBreakdownList(elId, entries, formatter) {
   }
 }
 
+document.getElementById("btn-clear-all").addEventListener("click", async () => {
+  const ok = confirm(
+    `本当に全データ(現在${state.articles.length}件)を消去しますか？\nこの操作は取り消せません。`
+  );
+  if (!ok) return;
+  await NikkeiDB.clear();
+  state.articles = [];
+  state.selectedId = null;
+  state.selectedDate = "";
+  updateDateOptions();
+  render();
+  alert("全データを消去しました。今日からのPDF取込を始められます。");
+});
+
 // ---------- 記事一覧(営業カード) ----------
 
 function renderList() {
@@ -278,8 +300,9 @@ function renderList() {
             <strong>企業:</strong> ${(a.companies || []).join("、") || "なし"}
           </div>
           <div class="detail-section">
-            ${a.pageImageDataUrl
-              ? `<img class="pdf-page-image" src="${a.pageImageDataUrl}" alt="元PDF p.${a.pageNumber}">`
+            <strong>元のPDFページ${(a.pageImages || []).length > 1 ? "(次ページも含む)" : ""}</strong>
+            ${(a.pageImages && a.pageImages.length)
+              ? a.pageImages.map(img => `<img class="pdf-page-image" src="${img.dataUrl}" alt="元PDF p.${img.pageNum}">`).join("")
               : `<p class="empty">元PDFページの画像がありません</p>`}
           </div>
         </div>
@@ -343,7 +366,7 @@ function renderDetail() {
     <div class="detail-section">
       <strong>企業:</strong> ${(a.companies || []).join("、") || "なし"}
     </div>
-    ${a.pageImageDataUrl ? `<img class="pdf-page-image" src="${a.pageImageDataUrl}" alt="元PDF p.${a.pageNumber}">` : ""}
+    ${(a.pageImages || []).map(img => `<img class="pdf-page-image" src="${img.dataUrl}" alt="元PDF p.${img.pageNum}">`).join("")}
   `;
 }
 
