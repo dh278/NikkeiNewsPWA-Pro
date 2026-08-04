@@ -68,9 +68,13 @@
   </div>
 </section>
 
-<!-- 検索 -->
+<!-- 検索・日付ジャンプ -->
 <section class="panel">
-  <h2>検索</h2>
+  <h2>検索・日付ジャンプ</h2>
+  <label for="select-date">新聞の日付</label>
+  <select id="select-date">
+    <option value="">すべての日付</option>
+  </select>
   <input type="text" id="input-search" placeholder="タイトル・要約・企業名で検索">
   <label class="checkbox-row">
     <input type="checkbox" id="filter-fav-only"> お気に入りのみ表示
@@ -93,9 +97,9 @@
   </div>
 </section>
 
-<script src="db.js?v=8"></script>
-<script src="pdf-processor.js?v=8"></script>
-<script src="gemini-extract.js?v=8"></script>
-<script src="app.js?v=8"></script>
+<script src="db.js?v=9"></script>
+<script src="pdf-processor.js?v=9"></script>
+<script src="gemini-extract.js?v=9"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>

@@ -130,6 +130,29 @@ const GeminiExtract = (() => {
     return Array.isArray(parsed) ? parsed : [];
   }
 
+  const RETRY_LIMIT = 3;
+  const RETRY_BASE_DELAY_MS = 3000; // 503(混雑)対策。指数的に待ち時間を伸ばす
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async function extractBatchWithRetry(pageImages, apiKey) {
+    let lastErr = null;
+    for (let attempt = 0; attempt <= RETRY_LIMIT; attempt++) {
+      try {
+        return await extractBatch(pageImages, apiKey);
+      } catch (e) {
+        lastErr = e;
+        // 503(混雑)・429(レート制限)は時間を置けば回復するのでリトライする
+        const retriable = /50[0-9]|429/.test(e.message);
+        if (!retriable || attempt === RETRY_LIMIT) break;
+        await sleep(RETRY_BASE_DELAY_MS * (attempt + 1));
+      }
+    }
+    throw lastErr;
+  }
+
   /**
    * @param {Array<{pageNum, dataUrl}>} pageImages
    * @param {string} apiKey
@@ -146,11 +169,23 @@ const GeminiExtract = (() => {
     }
 
     const results = [];
+    const failedBatches = [];
     for (let i = 0; i < batches.length; i++) {
       onProgress && onProgress(i + 1, batches.length);
-      const batchResult = await extractBatch(batches[i], apiKey);
-      results.push(...batchResult);
+      try {
+        const batchResult = await extractBatchWithRetry(batches[i], apiKey);
+        results.push(...batchResult);
+      } catch (e) {
+        // このバッチは諦めて先へ進む(1バッチの失敗で全体を止めない)
+        console.error(`バッチ${i + 1}が失敗しました(該当ページはスキップされます):`, e);
+        failedBatches.push({ batchIndex: i, pages: batches[i].map(p => p.pageNum), error: e.message });
+      }
     }
+    if (failedBatches.length > 0) {
+      const failedPages = failedBatches.flatMap(f => f.pages).join(", ");
+      console.warn(`取得できなかったページ: ${failedPages}`);
+    }
+    results.failedBatches = failedBatches; // 呼び出し側でエラー内容を表示できるように
     return results;
   }
 

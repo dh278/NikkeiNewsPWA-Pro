@@ -60,13 +60,14 @@ body {
 
 .hidden { display: none !important; }
 
-input[type="text"], input[type="password"], input[type="file"] {
+input[type="text"], input[type="password"], input[type="file"], select {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   font-size: 14px;
 }
+select { margin-bottom: 12px; background: white; }
 label { display: block; font-size: 13px; margin-bottom: 6px; color: var(--muted); }
 .checkbox-row { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 13px; }
 .checkbox-row input { width: auto; }

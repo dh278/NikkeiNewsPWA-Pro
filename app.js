@@ -17,6 +17,7 @@ let state = {
   selectedId: null,
   searchQuery: "",
   favOnly: false,
+  selectedDate: "", // "" = すべての日付
 };
 
 // ---------- 起動時チェック ----------
@@ -62,6 +63,21 @@ const progressWrap = document.getElementById("ocr-progress");
 const progressFill = document.getElementById("progress-fill");
 const progressLabel = document.getElementById("progress-label");
 
+// ファイル名(例: 260804新聞.pdf)から日付を推定する。見つからなければ今日の日付。
+function parseDateFromFilename(filename) {
+  const m = (filename || "").match(/(\d{2})(\d{2})(\d{2})/);
+  if (m) {
+    const [, yy, mm, dd] = m;
+    const yyyy = 2000 + parseInt(yy, 10);
+    const mmNum = parseInt(mm, 10);
+    const ddNum = parseInt(dd, 10);
+    if (mmNum >= 1 && mmNum <= 12 && ddNum >= 1 && ddNum <= 31) {
+      return `${yyyy}-${String(mmNum).padStart(2, "0")}-${String(ddNum).padStart(2, "0")}`;
+    }
+  }
+  return new Date().toISOString().slice(0, 10);
+}
+
 inputPdf.addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -72,6 +88,8 @@ inputPdf.addEventListener("change", async (e) => {
     inputPdf.value = "";
     return;
   }
+
+  const newspaperDate = parseDateFromFilename(file.name);
 
   progressWrap.classList.remove("hidden");
   progressFill.style.width = "0%";
@@ -97,7 +115,7 @@ inputPdf.addEventListener("change", async (e) => {
       progressLabel.textContent = `Geminiで記事を解析中... (${curBatch}/${totalBatches}バッチ)`;
     });
 
-    // 3. 各記事に、元ページの画像をそのまま持たせる(「元のPDFページを見る」用)
+    // 3. 各記事に、元ページの画像と新聞の日付をそのまま持たせる
     const imageByPage = {};
     for (const img of images) imageByPage[img.pageNum] = img.dataUrl;
 
@@ -106,6 +124,7 @@ inputPdf.addEventListener("change", async (e) => {
       favorite: false,
       createdAt: new Date().toISOString(),
       pdfId,
+      newspaperDate,
       pageNumber: a.page,
       headline: a.headline || "(見出し不明)",
       isRawArticle: !!a.isRaw,
@@ -117,9 +136,13 @@ inputPdf.addEventListener("change", async (e) => {
 
     await NikkeiDB.bulkAdd(analyzed);
     state.articles = [...analyzed, ...state.articles];
+    updateDateOptions();
     render();
 
-    progressLabel.textContent = `完了: ${analyzed.length}件の記事を抽出しました(全${totalPages}ページ)`;
+    const failCount = (rawArticles.failedBatches || []).length;
+    progressLabel.textContent = failCount
+      ? `完了: ${analyzed.length}件抽出(一部${failCount}バッチが混雑等で失敗。再取込で再挑戦できます)`
+      : `完了: ${analyzed.length}件の記事を抽出しました(全${totalPages}ページ)`;
   } catch (err) {
     console.error(err);
     progressLabel.textContent = "エラー: " + err.message;
@@ -129,7 +152,7 @@ inputPdf.addEventListener("change", async (e) => {
   }
 });
 
-// ---------- 検索 ----------
+// ---------- 検索・日付ジャンプ ----------
 
 document.getElementById("input-search").addEventListener("input", (e) => {
   state.searchQuery = e.target.value.trim().toLowerCase();
@@ -140,11 +163,36 @@ document.getElementById("filter-fav-only").addEventListener("change", (e) => {
   renderList();
 });
 
+const selectDate = document.getElementById("select-date");
+selectDate.addEventListener("change", (e) => {
+  state.selectedDate = e.target.value;
+  renderList();
+  // その日の記事一覧までスクロールして「ジャンプ」させる
+  document.getElementById("article-list").closest(".panel").scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
+// 取込済みの新聞の日付一覧を、日付選択プルダウンに反映する
+function updateDateOptions() {
+  const dates = [...new Set(state.articles.map(a => a.newspaperDate).filter(Boolean))].sort().reverse();
+  const current = selectDate.value;
+  selectDate.innerHTML = `<option value="">すべての日付(${state.articles.length}件)</option>`;
+  for (const d of dates) {
+    const count = state.articles.filter(a => a.newspaperDate === d).length;
+    const opt = document.createElement("option");
+    opt.value = d;
+    opt.textContent = `${d}(${count}件)`;
+    selectDate.appendChild(opt);
+  }
+  // 選択中の日付がまだ有効ならそれを維持する
+  if (dates.includes(current)) selectDate.value = current;
+}
+
 // ---------- 集計・フィルタ ----------
 
 function getFilteredArticles() {
   return state.articles.filter(a => {
     if (state.favOnly && !a.favorite) return false;
+    if (state.selectedDate && a.newspaperDate !== state.selectedDate) return false;
     if (!state.searchQuery) return true;
     const haystack = [a.headline, a.summary, a.history, ...(a.companies || [])]
       .join(" ")
@@ -246,7 +294,7 @@ function renderList() {
       ${a.isRawArticle ? `<span class="badge badge-deal">人事/データ</span>` : ""}
       ${previewHtml}
       <div class="card-badges">${badges}</div>
-      <div class="card-meta">p.${a.pageNumber} ・ タップで${isSelected ? "折りたたむ" : "全文表示"}</div>
+      <div class="card-meta">${a.newspaperDate || ""} p.${a.pageNumber} ・ タップで${isSelected ? "折りたたむ" : "全文表示"}</div>
       ${expandedHtml}
     `;
 
@@ -329,5 +377,6 @@ function render() {
 (async () => {
   state.articles = await NikkeiDB.getAll();
   state.articles.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  updateDateOptions();
   render();
 })();
