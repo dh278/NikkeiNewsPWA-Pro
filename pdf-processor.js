@@ -18,7 +18,13 @@ const PdfProcessor = (() => {
     }
 
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    // 日本語のCIDフォント(Adobe-Japan1)を含むPDFはCMap定義がないと
+    // 本文が正しく描画されない(空白になる)。cMapUrlの指定が必須。
+    const pdf = await pdfjsLib.getDocument({
+      data: arrayBuffer,
+      cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/",
+      cMapPacked: true
+    }).promise;
     const total = pdf.numPages;
     const images = [];
 
