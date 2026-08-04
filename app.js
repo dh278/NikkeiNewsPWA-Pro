@@ -182,6 +182,7 @@ inputPdf.addEventListener("change", async (e) => {
       } catch (ghErr) {
         console.error("GitHub保存エラー:", ghErr);
         statusMsg += ` (GitHub保存は失敗: ${ghErr.message})`;
+        alert("GitHubへの保存に失敗しました:\n" + ghErr.message);
       }
     }
     progressLabel.textContent = statusMsg;
