@@ -63,6 +63,22 @@ const GeminiExtract = (() => {
 ]
 `.trim();
 
+  const RESPONSE_SCHEMA = {
+    type: "array",
+    items: {
+      type: "object",
+      properties: {
+        page: { type: "integer" },
+        headline: { type: "string" },
+        isRaw: { type: "boolean" },
+        summary: { type: "string" },
+        history: { type: "string" },
+        companies: { type: "array", items: { type: "string" } },
+      },
+      required: ["page", "headline", "isRaw", "summary", "history", "companies"],
+    },
+  };
+
   async function extractBatch(pageImages, apiKey) {
     const parts = [{ text: PROMPT }];
 
@@ -83,7 +99,11 @@ const GeminiExtract = (() => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           contents: [{ role: "user", parts }],
-          generationConfig: { temperature: 0.2 }
+          generationConfig: {
+            temperature: 0.2,
+            responseMimeType: "application/json",
+            responseSchema: RESPONSE_SCHEMA
+          }
         })
       }
     );
