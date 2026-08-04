@@ -31,6 +31,24 @@
     <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>で無料取得できます。
   </p>
 
+  <hr>
+
+  <label for="input-github-token">GitHub Personal Access Token</label>
+  <input type="password" id="input-github-token" placeholder="ghp_... (repoスコープの Classic Token)">
+  <label for="input-github-owner">GitHubユーザー名</label>
+  <input type="text" id="input-github-owner" placeholder="例: dh278">
+  <label for="input-github-repo">リポジトリ名(現在使用中)</label>
+  <input type="text" id="input-github-repo" placeholder="例: NikkeiNewsPWA-Pro">
+  <p class="hint">
+    記事の見出し・要約・過去の関連動向・お気に入りを、GitHubリポジトリに
+    data/YYYY-MM-DD.json として自動保存します(画像は含みません)。
+    Safariの「7日間未訪問でブラウザ内データが消える」仕様に影響されない、
+    永続的なバックアップ先として使います。容量が800MBを超えたら新しい
+    リポジトリを自動作成して引き継ぎます。
+    トークンは<a href="https://github.com/settings/tokens" target="_blank" rel="noopener">GitHubの設定画面</a>から
+    「repo」スコープ付きのClassic Tokenを発行してください。
+  </p>
+
   <div class="btn-row">
     <button id="btn-save-key" class="btn-primary">保存</button>
     <button id="btn-close-settings" class="btn-secondary">閉じる</button>
@@ -60,15 +78,7 @@
     <div class="stat"><span id="stat-count">0</span><label>総記事数</label></div>
     <div class="stat"><span id="stat-fav">0</span><label>お気に入り</label></div>
   </div>
-  <div class="breakdown-grid">
-    <div class="breakdown">
-      <h3>企業別件数</h3>
-      <ol id="breakdown-companies" class="breakdown-list"><li class="empty">データなし</li></ol>
-    </div>
-  </div>
-  <div class="btn-row" style="margin-top:14px;">
-    <button id="btn-clear-all" class="btn-secondary">全データを消去してやり直す</button>
-  </div>
+  <p id="github-status" class="hint hidden"></p>
 </section>
 
 <!-- 検索・日付ジャンプ -->
@@ -100,9 +110,10 @@
   </div>
 </section>
 
-<script src="db.js?v=11"></script>
-<script src="pdf-processor.js?v=11"></script>
-<script src="gemini-extract.js?v=11"></script>
-<script src="app.js?v=11"></script>
+<script src="db.js?v=14"></script>
+<script src="pdf-processor.js?v=14"></script>
+<script src="gemini-extract.js?v=14"></script>
+<script src="github-store.js?v=14"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>

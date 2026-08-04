@@ -43,6 +43,10 @@ function setGeminiKey(key) {
 const panelSettings = document.getElementById("panel-settings");
 document.getElementById("btn-settings").addEventListener("click", () => {
   document.getElementById("input-gemini-key").value = getGeminiKey();
+  const cfg = GithubStore.getConfig();
+  document.getElementById("input-github-token").value = GithubStore.getToken();
+  document.getElementById("input-github-owner").value = (cfg && cfg.owner) || "";
+  document.getElementById("input-github-repo").value = (cfg && cfg.currentRepo) || "";
   panelSettings.classList.remove("hidden");
 });
 document.getElementById("btn-close-settings").addEventListener("click", () => {
@@ -51,6 +55,20 @@ document.getElementById("btn-close-settings").addEventListener("click", () => {
 document.getElementById("btn-save-key").addEventListener("click", () => {
   const key = document.getElementById("input-gemini-key").value.trim();
   setGeminiKey(key);
+
+  const token = document.getElementById("input-github-token").value.trim();
+  const owner = document.getElementById("input-github-owner").value.trim();
+  const repo = document.getElementById("input-github-repo").value.trim();
+  GithubStore.setToken(token);
+  if (owner && repo) {
+    const prevCfg = GithubStore.getConfig();
+    GithubStore.setConfig({
+      owner,
+      currentRepo: repo,
+      archivedRepos: (prevCfg && prevCfg.archivedRepos) || [],
+    });
+  }
+
   const status = document.getElementById("key-status");
   status.textContent = "保存しました。";
   status.className = "status ok";
@@ -137,7 +155,6 @@ inputPdf.addEventListener("change", async (e) => {
         isRawArticle: !!a.isRaw,
         summary: a.summary || "",
         history: a.history || "",
-        companies: Array.isArray(a.companies) ? a.companies : [],
         pageImages,
       };
     });
@@ -148,9 +165,26 @@ inputPdf.addEventListener("change", async (e) => {
     render();
 
     const failCount = (rawArticles.failedBatches || []).length;
-    progressLabel.textContent = failCount
+    let statusMsg = failCount
       ? `完了: ${analyzed.length}件抽出(一部${failCount}バッチが混雑等で失敗。再取込で再挑戦できます)`
       : `完了: ${analyzed.length}件の記事を抽出しました(全${totalPages}ページ)`;
+
+    // GitHubにテキストデータをバックアップ保存(画像は含めない)
+    if (GithubStore.isConfigured()) {
+      try {
+        progressLabel.textContent = statusMsg + " / GitHubへ保存中...";
+        await GithubStore.saveDayArticles(newspaperDate, analyzed);
+        const rotateResult = await GithubStore.checkAndRotateIfNeeded();
+        if (rotateResult.rotated) {
+          statusMsg += ` ⚠️リポジトリ容量が上限に近づいたため、新しいリポジトリ「${rotateResult.newRepo}」に自動で切り替えました。`;
+        }
+        await updateGithubStatus();
+      } catch (ghErr) {
+        console.error("GitHub保存エラー:", ghErr);
+        statusMsg += ` (GitHub保存は失敗: ${ghErr.message})`;
+      }
+    }
+    progressLabel.textContent = statusMsg;
   } catch (err) {
     console.error(err);
     progressLabel.textContent = "エラー: " + err.message;
@@ -202,56 +236,15 @@ function getFilteredArticles() {
     if (state.favOnly && !a.favorite) return false;
     if (state.selectedDate && a.newspaperDate !== state.selectedDate) return false;
     if (!state.searchQuery) return true;
-    const haystack = [a.headline, a.summary, a.history, ...(a.companies || [])]
-      .join(" ")
-      .toLowerCase();
+    const haystack = [a.headline, a.summary, a.history].join(" ").toLowerCase();
     return haystack.includes(state.searchQuery);
   });
-}
-
-function topN(counterMap, n = 5) {
-  return [...counterMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, n);
 }
 
 function renderDashboard() {
   document.getElementById("stat-count").textContent = state.articles.length;
   document.getElementById("stat-fav").textContent = state.articles.filter(a => a.favorite).length;
-
-  const companyCounts = new Map();
-  for (const a of state.articles) {
-    for (const c of a.companies || []) companyCounts.set(c, (companyCounts.get(c) || 0) + 1);
-  }
-  renderBreakdownList("breakdown-companies", topN(companyCounts), (name, count) => `${name}(${count}件)`);
 }
-
-function renderBreakdownList(elId, entries, formatter) {
-  const el = document.getElementById(elId);
-  if (!el) return;
-  el.innerHTML = "";
-  if (entries.length === 0) {
-    el.innerHTML = `<li class="empty">データなし</li>`;
-    return;
-  }
-  for (const [name, count] of entries) {
-    const li = document.createElement("li");
-    li.textContent = formatter(name, count);
-    el.appendChild(li);
-  }
-}
-
-document.getElementById("btn-clear-all").addEventListener("click", async () => {
-  const ok = confirm(
-    `本当に全データ(現在${state.articles.length}件)を消去しますか？\nこの操作は取り消せません。`
-  );
-  if (!ok) return;
-  await NikkeiDB.clear();
-  state.articles = [];
-  state.selectedId = null;
-  state.selectedDate = "";
-  updateDateOptions();
-  render();
-  alert("全データを消去しました。今日からのPDF取込を始められます。");
-});
 
 // ---------- 記事一覧(営業カード) ----------
 
@@ -271,7 +264,6 @@ function renderList() {
     li.addEventListener("click", () => selectArticle(a.id));
 
     const isSelected = a.id === state.selectedId;
-    const badges = (a.companies || []).map(c => `<span class="badge badge-company">${escapeHtml(c)}</span>`).join("");
 
     // AI要約(300字)をプレビュー表示。タップで元のPDFページを直接開く。
     let previewHtml = "";
@@ -297,9 +289,6 @@ function renderList() {
           </div>
           ${historyHtml}
           <div class="detail-section">
-            <strong>企業:</strong> ${(a.companies || []).join("、") || "なし"}
-          </div>
-          <div class="detail-section">
             <strong>元のPDFページ${(a.pageImages || []).length > 1 ? "(次ページも含む)" : ""}</strong>
             ${(a.pageImages && a.pageImages.length)
               ? a.pageImages.map(img => `<img class="pdf-page-image" src="${img.dataUrl}" alt="元PDF p.${img.pageNum}">`).join("")
@@ -316,7 +305,6 @@ function renderList() {
       </div>
       ${a.isRawArticle ? `<span class="badge badge-deal">人事/データ</span>` : ""}
       ${previewHtml}
-      <div class="card-badges">${badges}</div>
       <div class="card-meta">${a.newspaperDate || ""} p.${a.pageNumber} ・ タップで${isSelected ? "折りたたむ" : "全文表示"}</div>
       ${expandedHtml}
     `;
@@ -363,9 +351,6 @@ function renderDetail() {
       <div class="body-text">${escapeHtml(a.summary || "")}</div>
     </div>
     ${historyHtml}
-    <div class="detail-section">
-      <strong>企業:</strong> ${(a.companies || []).join("、") || "なし"}
-    </div>
     ${(a.pageImages || []).map(img => `<img class="pdf-page-image" src="${img.dataUrl}" alt="元PDF p.${img.pageNum}">`).join("")}
   `;
 }
@@ -387,6 +372,33 @@ async function toggleFavorite(id) {
   a.favorite = !a.favorite;
   await NikkeiDB.put(a);
   render();
+
+  // お気に入り状態もGitHubのバックアップに反映しておく(失敗しても致命的ではないので無視)
+  if (GithubStore.isConfigured() && a.newspaperDate) {
+    const sameDay = state.articles.filter(x => x.newspaperDate === a.newspaperDate);
+    GithubStore.saveDayArticles(a.newspaperDate, sameDay).catch(e =>
+      console.error("お気に入りのGitHub反映に失敗:", e)
+    );
+  }
+}
+
+// GitHubの保存容量の目安をダッシュボードに表示する
+async function updateGithubStatus() {
+  const el = document.getElementById("github-status");
+  if (!GithubStore.isConfigured()) {
+    el.classList.add("hidden");
+    return;
+  }
+  try {
+    const cfg = GithubStore.getConfig();
+    const sizeKB = await GithubStore.getRepoSizeKB(cfg.owner, cfg.currentRepo);
+    const sizeMB = (sizeKB / 1024).toFixed(1);
+    const pct = Math.min(100, Math.round((sizeKB / (800 * 1024)) * 100));
+    el.textContent = `GitHub保存: ${cfg.currentRepo} 約${sizeMB}MB使用中(800MB到達で自動的に新リポジトリへ切替 / ${pct}%)`;
+    el.classList.remove("hidden");
+  } catch (e) {
+    console.error("GitHub容量取得エラー:", e);
+  }
 }
 
 function render() {
@@ -399,7 +411,19 @@ function render() {
 
 (async () => {
   state.articles = await NikkeiDB.getAll();
+
+  // ローカル(IndexedDB)が空の場合(Safariの7日間未訪問による自動消去など)、
+  // GitHubにバックアップがあればそこから復元する(画像は含まれない)
+  if (state.articles.length === 0 && GithubStore.isConfigured()) {
+    try {
+      state.articles = await GithubStore.loadAllArticles();
+    } catch (e) {
+      console.error("GitHubからの復元に失敗:", e);
+    }
+  }
+
   state.articles.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   updateDateOptions();
   render();
+  updateGithubStatus();
 })();
