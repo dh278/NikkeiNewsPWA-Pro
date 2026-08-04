@@ -22,21 +22,12 @@
 <!-- 設定パネル -->
 <section id="panel-settings" class="panel hidden">
   <h2>設定</h2>
-  <label for="input-api-key">Google Cloud Vision API キー(任意)</label>
-  <input type="password" id="input-api-key" placeholder="AIza... で始まるキーを入力">
-  <p class="hint">
-    基本方針はPDFからの直接テキスト抽出です。APIキーは、テキスト抽出できないページが
-    見つかった場合のみ、そのページに限定してOCRに使用されます(コスト最小化)。
-    未設定でも動作しますが、その場合抽出できなかったページは内容が空のまま記録されます。
-    APIキーはこの端末のブラウザ内(IndexedDB/localStorage)にのみ保存され、サーバーには送信されません。
-    Google Cloud Consoleで「HTTPリファラー制限」の設定を推奨します。
-  </p>
-
-  <label for="input-gemini-key">Google Gemini API キー(AI要約・過去の関連動向の生成に使用)</label>
+  <label for="input-gemini-key">Google Gemini API キー</label>
   <input type="password" id="input-gemini-key" placeholder="Google AI Studioで取得した無料キーを入力">
   <p class="hint">
-    記事の300字要約と「過去の関連動向」の生成にGemini API(gemini-3.5-flash)を使用します。
-    無料枠の範囲で利用可能です。キーはこの端末のブラウザ内にのみ保存され、サーバーには送信されません。
+    PDFページの画像から記事の認識・300字要約・過去の関連動向の生成まで、すべてGemini API
+    (画像を直接読めるモデル)で行います。無料枠の範囲で利用可能です。
+    キーはこの端末のブラウザ内にのみ保存され、サーバーには送信されません。
     <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>で無料取得できます。
   </p>
 
@@ -50,27 +41,15 @@
 <!-- PDF取込 -->
 <section class="panel">
   <h2>PDF取込</h2>
-  <input type="file" id="input-pdf" accept="application/pdf">
-  <div id="ocr-progress" class="progress hidden">
-    <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
-    <p id="progress-label">処理中...</p>
-  </div>
-</section>
-
-<!-- Gemini AI要約 -->
-<section class="panel">
-  <h2>AI要約(Gemini)</h2>
   <p class="hint">
     紙面全体(1面〜最終面、短信・コラム・連載も含む)の記事について、見出しと300字程度の
     要約を一括生成します。あわせて、各記事のトピックに関する「過去の関連動向」も生成します。
     人事異動やマーケットの数表はAI要約を行わず、本文をそのまま表示します。
   </p>
-  <div class="btn-row">
-    <button id="btn-gemini-summarize" class="btn-primary">AI要約を実行</button>
-  </div>
-  <div id="gemini-progress" class="progress hidden">
-    <div class="progress-bar"><div id="gemini-progress-fill" class="progress-fill"></div></div>
-    <p id="gemini-progress-label">処理中...</p>
+  <input type="file" id="input-pdf" accept="application/pdf">
+  <div id="ocr-progress" class="progress hidden">
+    <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+    <p id="progress-label">処理中...</p>
   </div>
 </section>
 
@@ -86,21 +65,13 @@
       <h3>企業別件数</h3>
       <ol id="breakdown-companies" class="breakdown-list"><li class="empty">データなし</li></ol>
     </div>
-    <div class="breakdown">
-      <h3>地域別件数</h3>
-      <ol id="breakdown-regions" class="breakdown-list"><li class="empty">データなし</li></ol>
-    </div>
-    <div class="breakdown">
-      <h3>投資額ランキング</h3>
-      <ol id="breakdown-investments" class="breakdown-list"><li class="empty">データなし</li></ol>
-    </div>
   </div>
 </section>
 
 <!-- 検索 -->
 <section class="panel">
   <h2>検索</h2>
-  <input type="text" id="input-search" placeholder="タイトル・本文・企業名・地域名・案件種別で検索">
+  <input type="text" id="input-search" placeholder="タイトル・要約・企業名で検索">
   <label class="checkbox-row">
     <input type="checkbox" id="filter-fav-only"> お気に入りのみ表示
   </label>
@@ -123,12 +94,8 @@
 </section>
 
 <script src="db.js?v=5"></script>
-<script src="vision-ocr.js?v=5"></script>
-<script src="segment-utils.js?v=5"></script>
-<script src="extractor.js?v=5"></script>
-<script src="nikkei-index-parser.js?v=5"></script>
 <script src="pdf-processor.js?v=5"></script>
-<script src="gemini-summarizer.js?v=5"></script>
+<script src="gemini-extract.js?v=5"></script>
 <script src="app.js?v=5"></script>
 </body>
 </html>

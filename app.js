@@ -1,8 +1,15 @@
 /**
- * app.js (Ver.4)
+ * app.js (Ver.5)
+ *
+ * 処理の流れ:
+ *   1. PdfProcessor.renderAllPages()  … PDFの全ページを画像化するだけ
+ *   2. GeminiExtract.extractAll()     … 画像から記事認識+300字要約+
+ *                                        過去の関連動向+企業名を一括生成
+ *   3. 各記事に、元になったページの画像(dataUrl)をそのまま持たせておく
+ *      → 「元のPDFページを見る」はこの画像を表示するだけで済む
+ *         (クリック時に再レンダリングする必要がない)
  */
 
-const STORAGE_KEY_API = "nikkei-radar-google-vision-key";
 const STORAGE_KEY_GEMINI = "nikkei-radar-gemini-key";
 
 let state = {
@@ -10,13 +17,7 @@ let state = {
   selectedId: null,
   searchQuery: "",
   favOnly: false,
-  openPdfViewId: null,
-  pdfLoadingIds: new Set()
 };
-
-// レンダリング済みPDFページ画像のキャッシュ(articleId → dataURL)。
-// 永続化はせず、このセッション内だけの一時キャッシュ。
-const pdfImageCache = {};
 
 // ---------- 起動時チェック ----------
 
@@ -29,14 +30,8 @@ window.addEventListener("load", () => {
   }
 });
 
-// ---------- APIキー ----------
+// ---------- Gemini APIキー ----------
 
-function getApiKey() {
-  return localStorage.getItem(STORAGE_KEY_API) || "";
-}
-function setApiKey(key) {
-  localStorage.setItem(STORAGE_KEY_API, key);
-}
 function getGeminiKey() {
   return localStorage.getItem(STORAGE_KEY_GEMINI) || "";
 }
@@ -46,7 +41,6 @@ function setGeminiKey(key) {
 
 const panelSettings = document.getElementById("panel-settings");
 document.getElementById("btn-settings").addEventListener("click", () => {
-  document.getElementById("input-api-key").value = getApiKey();
   document.getElementById("input-gemini-key").value = getGeminiKey();
   panelSettings.classList.remove("hidden");
 });
@@ -54,16 +48,14 @@ document.getElementById("btn-close-settings").addEventListener("click", () => {
   panelSettings.classList.add("hidden");
 });
 document.getElementById("btn-save-key").addEventListener("click", () => {
-  const key = document.getElementById("input-api-key").value.trim();
-  setApiKey(key);
-  const geminiKey = document.getElementById("input-gemini-key").value.trim();
-  setGeminiKey(geminiKey);
+  const key = document.getElementById("input-gemini-key").value.trim();
+  setGeminiKey(key);
   const status = document.getElementById("key-status");
   status.textContent = "保存しました。";
   status.className = "status ok";
 });
 
-// ---------- PDF取込 ----------
+// ---------- PDF取込 → Gemini抽出(一括) ----------
 
 const inputPdf = document.getElementById("input-pdf");
 const progressWrap = document.getElementById("ocr-progress");
@@ -74,46 +66,60 @@ inputPdf.addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
 
-  const apiKey = getApiKey();
+  const apiKey = getGeminiKey();
+  if (!apiKey) {
+    alert("設定画面でGoogle Gemini APIキーを登録してください。");
+    inputPdf.value = "";
+    return;
+  }
 
   progressWrap.classList.remove("hidden");
   progressFill.style.width = "0%";
-  progressLabel.textContent = "PDFを読み込み中...";
+  progressLabel.textContent = "PDFをページ画像に変換中...";
 
   try {
-    await Extractor.loadData("");
-
     const pdfId = `pdf-${Date.now()}`;
 
-    const { rawArticles, totalPages, ocrPageCount, textPageCount } = await PdfProcessor.processPdf(
+    // 1. 全ページを画像化(テキスト抽出やOCRは行わない)
+    const { images, totalPages } = await PdfProcessor.renderAllPages(
       file,
-      apiKey,
-      (cur, total, label) => {
-        const pct = Math.round((cur / total) * 100);
+      (cur, total) => {
+        const pct = Math.round((cur / total) * 50); // 全体の前半50%をレンダリングに割り当て
         progressFill.style.width = pct + "%";
-        progressLabel.textContent = `${label}... (${cur}/${total}ページ)`;
+        progressLabel.textContent = `ページ画像に変換中... (${cur}/${total}ページ)`;
       }
     );
 
-    // 「元のPDFを見る」機能のため、取り込んだPDF自体も保存しておく
-    await NikkeiDB.savePdf(pdfId, file);
+    // 2. Geminiに画像を渡して、記事の認識+300字要約+過去の関連動向を一括生成
+    const rawArticles = await GeminiExtract.extractAll(images, apiKey, (curBatch, totalBatches) => {
+      const pct = 50 + Math.round((curBatch / totalBatches) * 50); // 後半50%をGemini処理に割り当て
+      progressFill.style.width = pct + "%";
+      progressLabel.textContent = `Geminiで記事を解析中... (${curBatch}/${totalBatches}バッチ)`;
+    });
 
-    const analyzed = rawArticles.map(a =>
-      Extractor.analyze({
-        ...a,
-        id: `art-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        favorite: false,
-        createdAt: new Date().toISOString(),
-        pdfId
-      })
-    );
+    // 3. 各記事に、元ページの画像をそのまま持たせる(「元のPDFページを見る」用)
+    const imageByPage = {};
+    for (const img of images) imageByPage[img.pageNum] = img.dataUrl;
+
+    const analyzed = rawArticles.map((a) => ({
+      id: `art-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      favorite: false,
+      createdAt: new Date().toISOString(),
+      pdfId,
+      pageNumber: a.page,
+      headline: a.headline || "(見出し不明)",
+      isRawArticle: !!a.isRaw,
+      summary: a.summary || "",
+      history: a.history || "",
+      companies: Array.isArray(a.companies) ? a.companies : [],
+      pageImageDataUrl: imageByPage[a.page] || null,
+    }));
 
     await NikkeiDB.bulkAdd(analyzed);
     state.articles = [...analyzed, ...state.articles];
     render();
 
-    progressLabel.textContent =
-      `完了: ${analyzed.length}件抽出(テキスト抽出 ${textPageCount}p / OCR ${ocrPageCount}p / 全${totalPages}p)`;
+    progressLabel.textContent = `完了: ${analyzed.length}件の記事を抽出しました(全${totalPages}ページ)`;
   } catch (err) {
     console.error(err);
     progressLabel.textContent = "エラー: " + err.message;
@@ -122,56 +128,6 @@ inputPdf.addEventListener("change", async (e) => {
     setTimeout(() => progressWrap.classList.add("hidden"), 5000);
   }
 });
-
-// ---------- Gemini要約 ----------
-
-const btnGeminiSummarize = document.getElementById("btn-gemini-summarize");
-const geminiProgressWrap = document.getElementById("gemini-progress");
-const geminiProgressFill = document.getElementById("gemini-progress-fill");
-const geminiProgressLabel = document.getElementById("gemini-progress-label");
-
-if (btnGeminiSummarize) {
-  btnGeminiSummarize.addEventListener("click", async () => {
-    const apiKey = getGeminiKey();
-    if (!apiKey) {
-      alert("設定画面でGemini APIキーを登録してください。");
-      return;
-    }
-
-    // まだGemini要約が付いていない記事だけを対象にする(再取込時の重複課金を防ぐ)
-    const pending = state.articles.filter(a => a.geminiSummary === undefined);
-    if (pending.length === 0) {
-      alert("すべての記事にすでにAI要約が付いています。");
-      return;
-    }
-
-    btnGeminiSummarize.disabled = true;
-    geminiProgressWrap.classList.remove("hidden");
-    geminiProgressFill.style.width = "0%";
-    geminiProgressLabel.textContent = `Gemini要約を開始します(${pending.length}件)...`;
-
-    try {
-      await GeminiSummarizer.summarizeArticles(pending, apiKey, (done, total, label) => {
-        const pct = total ? Math.round((done / total) * 100) : 0;
-        geminiProgressFill.style.width = pct + "%";
-        geminiProgressLabel.textContent = `${label} (${done}/${total}件)`;
-      });
-
-      // 更新された記事をDBへ保存
-      for (const a of pending) {
-        await NikkeiDB.put(a);
-      }
-      render();
-      geminiProgressLabel.textContent = `完了: ${pending.length}件のAI要約を生成しました。`;
-    } catch (err) {
-      console.error(err);
-      geminiProgressLabel.textContent = "エラー: " + err.message;
-    } finally {
-      btnGeminiSummarize.disabled = false;
-      setTimeout(() => geminiProgressWrap.classList.add("hidden"), 5000);
-    }
-  });
-}
 
 // ---------- 検索 ----------
 
@@ -190,10 +146,9 @@ function getFilteredArticles() {
   return state.articles.filter(a => {
     if (state.favOnly && !a.favorite) return false;
     if (!state.searchQuery) return true;
-    const haystack = [
-      a.headline, a.body,
-      ...(a.companies || []), ...(a.regions || []), ...(a.dealTypes || [])
-    ].join(" ").toLowerCase();
+    const haystack = [a.headline, a.summary, a.history, ...(a.companies || [])]
+      .join(" ")
+      .toLowerCase();
     return haystack.includes(state.searchQuery);
   });
 }
@@ -207,37 +162,15 @@ function renderDashboard() {
   document.getElementById("stat-fav").textContent = state.articles.filter(a => a.favorite).length;
 
   const companyCounts = new Map();
-  const regionCounts = new Map();
-  const investmentList = [];
-
   for (const a of state.articles) {
     for (const c of a.companies || []) companyCounts.set(c, (companyCounts.get(c) || 0) + 1);
-    for (const r of a.regions || []) regionCounts.set(r, (regionCounts.get(r) || 0) + 1);
-    for (const inv of a.investments || []) {
-      investmentList.push({ headline: a.headline, id: a.id, ...inv });
-    }
   }
-
   renderBreakdownList("breakdown-companies", topN(companyCounts), (name, count) => `${name}(${count}件)`);
-  renderBreakdownList("breakdown-regions", topN(regionCounts), (name, count) => `${name}(${count}件)`);
-
-  investmentList.sort((a, b) => b.oku - a.oku);
-  const investEl = document.getElementById("breakdown-investments");
-  investEl.innerHTML = "";
-  if (investmentList.length === 0) {
-    investEl.innerHTML = `<li class="empty">データなし</li>`;
-  } else {
-    for (const inv of investmentList.slice(0, 5)) {
-      const li = document.createElement("li");
-      li.textContent = `${inv.text}  ${inv.headline}`;
-      li.addEventListener("click", () => selectArticle(inv.id));
-      investEl.appendChild(li);
-    }
-  }
 }
 
 function renderBreakdownList(elId, entries, formatter) {
   const el = document.getElementById(elId);
+  if (!el) return;
   el.innerHTML = "";
   if (entries.length === 0) {
     el.innerHTML = `<li class="empty">データなし</li>`;
@@ -251,10 +184,6 @@ function renderBreakdownList(elId, entries, formatter) {
 }
 
 // ---------- 記事一覧(営業カード) ----------
-
-function starString(n) {
-  return "★".repeat(n) + "☆".repeat(5 - n);
-}
 
 function renderList() {
   const listEl = document.getElementById("article-list");
@@ -271,76 +200,39 @@ function renderList() {
     li.className = "sales-card" + (a.id === state.selectedId ? " active" : "");
     li.addEventListener("click", () => selectArticle(a.id));
 
-    const badges = [
-      ...(a.companies || []).map(c => `<span class="badge badge-company">${escapeHtml(c)}</span>`),
-      ...(a.regions || []).map(r => `<span class="badge badge-region">${escapeHtml(r)}</span>`),
-      ...(a.dealTypes || []).map(d => `<span class="badge badge-deal">${escapeHtml(d)}</span>`)
-    ].join("");
-
-    const investText = (a.investments || []).map(i => i.text).join(" / ");
     const isSelected = a.id === state.selectedId;
+    const badges = (a.companies || []).map(c => `<span class="badge badge-company">${escapeHtml(c)}</span>`).join("");
 
-    const keySentencesHtml = (a.keySentences || []).map(s => `<li>${escapeHtml(s)}</li>`).join("");
-
-    // Gemini要約(300字)があればそれを優先してプレビュー表示。タップで元PDFページを開く。
-    // まだ要約が無い場合は従来の重要文プレビューにフォールバック。
+    // AI要約(300字)をプレビュー表示。タップで元のPDFページを直接開く。
     let previewHtml = "";
     if (!isSelected) {
       if (a.isRawArticle) {
-        previewHtml = `<p class="card-preview raw-note">人事・データ表のためAI要約なし(全文をそのまま表示)</p>`;
-      } else if (a.geminiSummary) {
-        previewHtml = `
-          <p class="card-preview gemini-summary js-open-pdf" data-id="${a.id}" title="タップで元のPDFページを表示">
-            ${escapeHtml(a.geminiSummary)}
-          </p>`;
-      } else if (keySentencesHtml) {
-        previewHtml = `<ul class="card-preview">${keySentencesHtml}</ul>`;
+        previewHtml = `<p class="card-preview raw-note js-open-pdf" data-id="${a.id}">${escapeHtml((a.summary || "").slice(0, 120))}…(人事・データ表/タップで元PDF)</p>`;
+      } else if (a.summary) {
+        previewHtml = `<p class="card-preview gemini-summary js-open-pdf" data-id="${a.id}" title="タップで元のPDFページを表示">${escapeHtml(a.summary)}</p>`;
       }
     }
 
-    const isPdfViewOpen = state.openPdfViewId === a.id;
-    const isPdfLoading = state.pdfLoadingIds.has(a.id);
-    let pdfViewHtml = "";
-    if (isPdfViewOpen) {
-      if (isPdfLoading) {
-        pdfViewHtml = `<p class="ai-loading">PDFページを読み込み中...</p>`;
-      } else if (pdfImageCache[a.id] && pdfImageCache[a.id].length) {
-        pdfViewHtml = pdfImageCache[a.id]
-          .map(img => `<img class="pdf-page-image" src="${img.dataUrl}" alt="元PDF p.${img.pageNum}">`)
-          .join("");
-      }
-    }
-
-    const geminiSummaryHtml =
-      !a.isRawArticle && a.geminiSummary
-        ? `<div class="detail-section"><strong>AI要約(${a.geminiSummary.length}字)</strong><div class="body-text">${escapeHtml(a.geminiSummary)}</div></div>`
-        : "";
-    const geminiHistoryHtml =
-      !a.isRawArticle && a.geminiHistory
-        ? `<div class="detail-section history"><strong>過去の関連動向</strong><div class="body-text">${escapeHtml(a.geminiHistory)}</div></div>`
+    const historyHtml =
+      !a.isRawArticle && a.history
+        ? `<div class="detail-section history"><strong>過去の関連動向</strong><div class="body-text">${escapeHtml(a.history)}</div></div>`
         : "";
 
     const expandedHtml = isSelected
       ? `
         <div class="card-expanded">
-          ${geminiSummaryHtml}
-          ${geminiHistoryHtml}
           <div class="detail-section">
-            <strong>全文</strong>
-            <div class="body-text">${escapeHtml(a.body)}</div>
+            <strong>${a.isRawArticle ? "内容(そのまま書き起こし)" : `AI要約(${(a.summary || "").length}字)`}</strong>
+            <div class="body-text">${escapeHtml(a.summary || "")}</div>
           </div>
-          ${keySentencesHtml ? `<div class="detail-section"><strong>重要文</strong><ul>${keySentencesHtml}</ul></div>` : ""}
+          ${historyHtml}
           <div class="detail-section">
-            <strong>企業:</strong> ${(a.companies || []).join("、") || "なし"}<br>
-            <strong>地域:</strong> ${(a.regions || []).join("、") || "なし"}<br>
-            <strong>投資額:</strong> ${(a.investments || []).map(i => i.text).join("、") || "なし"}<br>
-            <strong>案件種別:</strong> ${(a.dealTypes || []).join("、") || "なし"}
+            <strong>企業:</strong> ${(a.companies || []).join("、") || "なし"}
           </div>
           <div class="detail-section">
-            <button class="btn-show-pdf btn-secondary" data-id="${a.id}">
-              ${isPdfViewOpen ? "元のPDFを閉じる" : `元のPDFページを見る (p.${a.sourcePdfPage || "?"})`}
-            </button>
-            ${pdfViewHtml}
+            ${a.pageImageDataUrl
+              ? `<img class="pdf-page-image" src="${a.pageImageDataUrl}" alt="元PDF p.${a.pageNumber}">`
+              : `<p class="empty">元PDFページの画像がありません</p>`}
           </div>
         </div>
       `
@@ -351,11 +243,10 @@ function renderList() {
         <span class="card-title">${escapeHtml(a.headline)}</span>
         <span class="fav-star ${a.favorite ? "active" : ""}" data-id="${a.id}">${a.favorite ? "★" : "☆"}</span>
       </div>
-      <div class="card-stars">${starString(a.impactScore || 1)}</div>
-      ${investText ? `<div class="card-invest">${escapeHtml(investText)}</div>` : ""}
+      ${a.isRawArticle ? `<span class="badge badge-deal">人事/データ</span>` : ""}
       ${previewHtml}
       <div class="card-badges">${badges}</div>
-      <div class="card-meta">p.${a.pageNumber} ・ ${a.sourceMethod === "ocr" ? "OCR" : a.sourceMethod === "text" ? "テキスト抽出" : "抽出不可"} ・ タップで${isSelected ? "折りたたむ" : "全文表示"}</div>
+      <div class="card-meta">p.${a.pageNumber} ・ タップで${isSelected ? "折りたたむ" : "全文表示"}</div>
       ${expandedHtml}
     `;
 
@@ -364,21 +255,13 @@ function renderList() {
       toggleFavorite(a.id);
     });
 
-    const pdfBtn = li.querySelector(".btn-show-pdf");
-    if (pdfBtn) {
-      pdfBtn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        handleShowPdfPage(a);
-      });
-    }
-
-    // AI要約(300字)をタップ → カードを開かず直接、元のPDFページを表示する
+    // AI要約プレビューをタップ → カードを開きつつ、元のPDFページ画像を表示する
     const summaryLink = li.querySelector(".js-open-pdf");
     if (summaryLink) {
       summaryLink.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        state.selectedId = a.id; // 詳細セクションも同時に開いておく
-        handleShowPdfPage(a);
+        state.selectedId = a.id;
+        render();
       });
     }
 
@@ -394,35 +277,25 @@ function renderDetail() {
     return;
   }
 
-  const keySentencesHtml = (a.keySentences || []).map(s => `<li>${escapeHtml(s)}</li>`).join("");
-  const geminiSummaryHtml =
-    !a.isRawArticle && a.geminiSummary
-      ? `<div class="detail-section"><strong>AI要約(${a.geminiSummary.length}字)</strong><div class="body-text">${escapeHtml(a.geminiSummary)}</div></div>`
-      : "";
-  const geminiHistoryHtml =
-    !a.isRawArticle && a.geminiHistory
-      ? `<div class="detail-section history"><strong>過去の関連動向</strong><div class="body-text">${escapeHtml(a.geminiHistory)}</div></div>`
+  const historyHtml =
+    !a.isRawArticle && a.history
+      ? `<div class="detail-section history"><strong>過去の関連動向</strong><div class="body-text">${escapeHtml(a.history)}</div></div>`
       : "";
 
   detailEl.innerHTML = `
     <h3>${escapeHtml(a.headline)}</h3>
     <div class="detail-meta">
-      p.${a.pageNumber} ・ 営業インパクト ${starString(a.impactScore || 1)} ・
-      取込日時: ${new Date(a.createdAt).toLocaleString("ja-JP")}
+      p.${a.pageNumber} ・ 取込日時: ${new Date(a.createdAt).toLocaleString("ja-JP")}
     </div>
-    ${geminiSummaryHtml}
-    ${geminiHistoryHtml}
     <div class="detail-section">
-      <strong>全文</strong>
-      <div class="body-text">${escapeHtml(a.body)}</div>
+      <strong>${a.isRawArticle ? "内容(そのまま書き起こし)" : `AI要約(${(a.summary || "").length}字)`}</strong>
+      <div class="body-text">${escapeHtml(a.summary || "")}</div>
     </div>
-    ${keySentencesHtml ? `<div class="detail-section"><strong>重要文</strong><ul>${keySentencesHtml}</ul></div>` : ""}
+    ${historyHtml}
     <div class="detail-section">
-      <strong>企業:</strong> ${(a.companies || []).join("、") || "なし"}<br>
-      <strong>地域:</strong> ${(a.regions || []).join("、") || "なし"}<br>
-      <strong>投資額:</strong> ${(a.investments || []).map(i => i.text).join("、") || "なし"}<br>
-      <strong>案件種別:</strong> ${(a.dealTypes || []).join("、") || "なし"}
+      <strong>企業:</strong> ${(a.companies || []).join("、") || "なし"}
     </div>
+    ${a.pageImageDataUrl ? `<img class="pdf-page-image" src="${a.pageImageDataUrl}" alt="元PDF p.${a.pageNumber}">` : ""}
   `;
 }
 
@@ -435,74 +308,6 @@ function escapeHtml(str) {
 function selectArticle(id) {
   state.selectedId = state.selectedId === id ? null : id;
   render();
-}
-
-async function handleShowPdfPage(article) {
-  const id = article.id;
-
-  // 既に開いていれば閉じる(トグル)
-  if (state.openPdfViewId === id) {
-    state.openPdfViewId = null;
-    render();
-    return;
-  }
-
-  state.openPdfViewId = id;
-
-  if (pdfImageCache[id]) {
-    render();
-    return;
-  }
-
-  if (!article.pdfId || !article.sourcePdfPage) {
-    alert("このPDFの保存データが見つかりませんでした(古い取込データの可能性があります)。");
-    state.openPdfViewId = null;
-    return;
-  }
-
-  state.pdfLoadingIds.add(id);
-  render();
-
-  try {
-    const blob = await NikkeiDB.getPdf(article.pdfId);
-    if (!blob) throw new Error("保存されたPDFが見つかりません。再取込みが必要です。");
-
-    const arrayBuffer = await blob.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({
-      data: arrayBuffer,
-      cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/",
-      cMapPacked: true
-    }).promise;
-
-    // 記事がページの区切りをまたいで後半が切れることがあるため、
-    // 現在のページに続けて次のページも一緒にレンダリングする。
-    const startPage = Math.min(Math.max(1, article.sourcePdfPage), pdf.numPages);
-    const pageNumsToRender = [startPage];
-    if (startPage + 1 <= pdf.numPages) pageNumsToRender.push(startPage + 1);
-
-    const images = [];
-    for (const pageNum of pageNumsToRender) {
-      const page = await pdf.getPage(pageNum);
-      const viewport = page.getViewport({ scale: 1.5 });
-      const canvas = document.createElement("canvas");
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      const ctx = canvas.getContext("2d");
-      await page.render({ canvasContext: ctx, viewport }).promise;
-      images.push({ pageNum, dataUrl: canvas.toDataURL("image/png") });
-      canvas.width = 0;
-      canvas.height = 0;
-    }
-
-    pdfImageCache[id] = images;
-  } catch (err) {
-    console.error(err);
-    pdfImageCache[id] = null;
-    alert("PDFページの表示に失敗しました: " + err.message);
-  } finally {
-    state.pdfLoadingIds.delete(id);
-    render();
-  }
 }
 
 async function toggleFavorite(id) {

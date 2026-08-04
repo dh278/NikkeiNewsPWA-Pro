@@ -143,14 +143,18 @@ button {
 
 /* Gemini AI要約プレビュー: タップで元PDFページを開けることが分かるようリンク調に */
 .card-preview.gemini-summary {
-  padding-left: 0;
-  color: #333;
   cursor: pointer;
   border-left: 3px solid var(--accent);
   padding-left: 10px;
 }
 .card-preview.gemini-summary:hover { background: var(--accent-soft); }
-.card-preview.raw-note { color: var(--muted); font-style: italic; }
+.card-preview.raw-note {
+  cursor: pointer;
+  color: var(--muted);
+  font-style: italic;
+  border-left: 3px solid var(--muted);
+  padding-left: 10px;
+}
 
 .detail-section.history { background: #fdf8ee; border-radius: var(--radius); padding: 8px 10px; }
 .detail-section.history strong { color: #8a5a00; }
