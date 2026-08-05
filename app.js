@@ -74,6 +74,35 @@ document.getElementById("btn-save-key").addEventListener("click", () => {
   status.className = "status ok";
 });
 
+document.getElementById("btn-test-github").addEventListener("click", async () => {
+  // テスト前に、今入力欄にある内容を先に保存しておく(保存し忘れたままのテストを防ぐ)
+  const token = document.getElementById("input-github-token").value.trim();
+  const owner = document.getElementById("input-github-owner").value.trim();
+  const repo = document.getElementById("input-github-repo").value.trim();
+  GithubStore.setToken(token);
+  if (owner && repo) {
+    const prevCfg = GithubStore.getConfig();
+    GithubStore.setConfig({
+      owner,
+      currentRepo: repo,
+      archivedRepos: (prevCfg && prevCfg.archivedRepos) || [],
+    });
+  }
+
+  const status = document.getElementById("key-status");
+  status.textContent = "接続テスト中...";
+  status.className = "status";
+
+  try {
+    const result = await GithubStore.testConnection();
+    status.textContent = result.message;
+    status.className = "status " + (result.ok ? "ok" : "error");
+  } catch (e) {
+    status.textContent = "接続テストでエラーが発生しました: " + e.message;
+    status.className = "status error";
+  }
+});
+
 // ---------- PDF取込 → Gemini抽出(一括) ----------
 
 const inputPdf = document.getElementById("input-pdf");

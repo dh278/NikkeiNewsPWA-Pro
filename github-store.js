@@ -282,6 +282,47 @@ const GithubStore = (() => {
     return { rotated: true, oldRepo, newRepo: newRepoName, sizeKB };
   }
 
+  // ---------- 接続テスト(設定画面から即座に有効性を確認するため) ----------
+
+  /**
+   * トークンが実際に有効か、認証必須のエンドポイント(/user)で確認する。
+   * リポジトリの読み取り専用アクセス確認だけでは、無効なトークンでも
+   * 公開リポジトリなら成功してしまうため、必ずこちらを使うこと。
+   */
+  async function testConnection() {
+    const token = getToken();
+    if (!token) return { ok: false, message: "トークンが未入力です。" };
+
+    const cfg = getConfig();
+    if (!cfg || !cfg.owner || !cfg.currentRepo) {
+      return { ok: false, message: "ユーザー名またはリポジトリ名が未入力です。" };
+    }
+
+    // 1. トークン自体の有効性(認証必須のエンドポイント)
+    const userRes = await api(`/user`);
+    if (!userRes.ok) {
+      const errText = await userRes.text();
+      return { ok: false, message: `トークンが無効です (${userRes.status}): ${errText}` };
+    }
+    const user = await userRes.json();
+
+    // 2. 指定されたリポジトリへの書き込み権限があるか
+    const repoRes = await api(`/repos/${cfg.owner}/${cfg.currentRepo}`);
+    if (!repoRes.ok) {
+      const errText = await repoRes.text();
+      return { ok: false, message: `リポジトリが見つかりません (${repoRes.status}): ${errText}` };
+    }
+    const repo = await repoRes.json();
+    if (!repo.permissions || !repo.permissions.push) {
+      return { ok: false, message: `トークンは有効ですが、このリポジトリへの書き込み権限がありません(閲覧のみ)。` };
+    }
+
+    return {
+      ok: true,
+      message: `OK: GitHubユーザー「${user.login}」として認証成功。リポジトリ「${cfg.owner}/${cfg.currentRepo}」へ書き込み可能です。`,
+    };
+  }
+
   return {
     getToken,
     setToken,
@@ -295,5 +336,6 @@ const GithubStore = (() => {
     savePageImages,
     getPageImageUrl,
     purgeOldImages,
+    testConnection,
   };
 })();
