@@ -388,33 +388,6 @@ function renderList() {
   }
 }
 
-function renderDetail() {
-  const detailEl = document.getElementById("article-detail");
-  const a = state.articles.find(x => x.id === state.selectedId);
-  if (!a) {
-    detailEl.innerHTML = `<p class="empty">記事を選択してください</p>`;
-    return;
-  }
-
-  const historyHtml =
-    !a.isRawArticle && a.history
-      ? `<div class="detail-section history"><strong>過去の関連動向</strong><div class="body-text">${escapeHtml(a.history)}</div></div>`
-      : "";
-
-  detailEl.innerHTML = `
-    <h3>${escapeHtml(a.headline)}</h3>
-    <div class="detail-meta">
-      p.${a.pageNumber} ・ 取込日時: ${new Date(a.createdAt).toLocaleString("ja-JP")}
-    </div>
-    <div class="detail-section">
-      <strong>${a.isRawArticle ? "内容(そのまま書き起こし)" : `AI要約(${(a.summary || "").length}字)`}</strong>
-      <div class="body-text">${escapeHtml(a.summary || "")}</div>
-    </div>
-    ${historyHtml}
-    ${renderPageImagesHtml(a)}
-  `;
-}
-
 function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str || "";
@@ -490,7 +463,6 @@ async function updateGithubStatus() {
 function render() {
   renderDashboard();
   renderList();
-  renderDetail();
 }
 
 // ---------- 初期化 ----------
