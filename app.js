@@ -509,7 +509,12 @@ function render() {
     }
   }
 
-  state.articles.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  // 日付は新しい順、同じ日付内では紙面のページ順(1面から)に並べる
+  state.articles.sort((a, b) => {
+    const dateDiff = (b.newspaperDate || "").localeCompare(a.newspaperDate || "");
+    if (dateDiff !== 0) return dateDiff;
+    return (a.pageNumber || 0) - (b.pageNumber || 0);
+  });
 
   // トップは「すべての記事」ではなく、一番新しい日付のニュースだけを表示する
   const availableDates = [...new Set(state.articles.map(a => a.newspaperDate).filter(Boolean))].sort().reverse();
