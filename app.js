@@ -81,9 +81,29 @@ const progressWrap = document.getElementById("ocr-progress");
 const progressFill = document.getElementById("progress-fill");
 const progressLabel = document.getElementById("progress-label");
 
+// GitHubへのバックアップ用に、画質・サイズを落とした軽量JPEGを作る
+// (Gemini解析用・ローカル表示用の高画質版とは別に、バックアップ専用の軽量版を作る)
+function compressForBackup(dataUrl, maxWidth = 900, quality = 0.5) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxWidth / img.width);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+      canvas.width = 0;
+      canvas.height = 0;
+    };
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
 // ファイル名(例: 260804新聞.pdf)から日付を推定する。見つからなければ今日の日付。
-function parseDateFromFilename(filename) {
-  const m = (filename || "").match(/(\d{2})(\d{2})(\d{2})/);
+function parseDateFromFilename(filename) {  const m = (filename || "").match(/(\d{2})(\d{2})(\d{2})/);
   if (m) {
     const [, yy, mm, dd] = m;
     const yyyy = 2000 + parseInt(yy, 10);
@@ -133,16 +153,14 @@ inputPdf.addEventListener("change", async (e) => {
       progressLabel.textContent = `Geminiで記事を解析中... (${curBatch}/${totalBatches}バッチ)`;
     });
 
-    // 3. 各記事に、元ページの画像と新聞の日付をそのまま持たせる。
-    //    記事本文が次ページへ続いていて見切れることがあるため、
-    //    見出しのあるページに加えて次ページの画像も一緒に持たせておく。
-    const imageByPage = {};
-    for (const img of images) imageByPage[img.pageNum] = img.dataUrl;
+    // 3. 各記事は、元ページの番号(current, 次ページ)だけを持つ。
+    //    画像そのものは記事に埋め込まず、ページ単位で1回だけ別途保存する
+    //    (同じページを複数記事が参照しても重複保存しないため)。
+    const pageNumSet = new Set(images.map(img => img.pageNum));
 
     const analyzed = rawArticles.map((a) => {
-      const pageImages = [];
-      if (imageByPage[a.page]) pageImages.push({ pageNum: a.page, dataUrl: imageByPage[a.page] });
-      if (imageByPage[a.page + 1]) pageImages.push({ pageNum: a.page + 1, dataUrl: imageByPage[a.page + 1] });
+      const pageNumbers = [a.page];
+      if (pageNumSet.has(a.page + 1)) pageNumbers.push(a.page + 1);
 
       return {
         id: `art-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -155,9 +173,12 @@ inputPdf.addEventListener("change", async (e) => {
         isRawArticle: !!a.isRaw,
         summary: a.summary || "",
         history: a.history || "",
-        pageImages,
+        pageNumbers,
       };
     });
+
+    // ページ画像はローカル(IndexedDB)にページ単位で1回だけ保存する
+    await NikkeiDB.putPages(newspaperDate, images);
 
     await NikkeiDB.bulkAdd(analyzed);
     state.articles = [...analyzed, ...state.articles];
@@ -169,11 +190,19 @@ inputPdf.addEventListener("change", async (e) => {
       ? `完了: ${analyzed.length}件抽出(一部${failCount}バッチが混雑等で失敗。再取込で再挑戦できます)`
       : `完了: ${analyzed.length}件の記事を抽出しました(全${totalPages}ページ)`;
 
-    // GitHubにテキストデータをバックアップ保存(画像は含めない)
+    // GitHubにテキストデータ+圧縮したページ画像をバックアップ保存
     if (GithubStore.isConfigured()) {
       try {
         progressLabel.textContent = statusMsg + " / GitHubへ保存中...";
         await GithubStore.saveDayArticles(newspaperDate, analyzed);
+
+        progressLabel.textContent = statusMsg + " / ページ画像をGitHubへ圧縮アップロード中...";
+        const compressed = [];
+        for (const img of images) {
+          compressed.push({ pageNum: img.pageNum, dataUrl: await compressForBackup(img.dataUrl) });
+        }
+        await GithubStore.savePageImages(newspaperDate, compressed);
+
         const rotateResult = await GithubStore.checkAndRotateIfNeeded();
         if (rotateResult.rotated) {
           statusMsg += ` ⚠️リポジトリ容量が上限に近づいたため、新しいリポジトリ「${rotateResult.newRepo}」に自動で切り替えました。`;
@@ -217,7 +246,6 @@ selectDate.addEventListener("change", (e) => {
 // 取込済みの新聞の日付一覧を、日付選択プルダウンに反映する
 function updateDateOptions() {
   const dates = [...new Set(state.articles.map(a => a.newspaperDate).filter(Boolean))].sort().reverse();
-  const current = selectDate.value;
   selectDate.innerHTML = `<option value="">すべての日付(${state.articles.length}件)</option>`;
   for (const d of dates) {
     const count = state.articles.filter(a => a.newspaperDate === d).length;
@@ -226,8 +254,8 @@ function updateDateOptions() {
     opt.textContent = `${d}(${count}件)`;
     selectDate.appendChild(opt);
   }
-  // 選択中の日付がまだ有効ならそれを維持する
-  if (dates.includes(current)) selectDate.value = current;
+  // state.selectedDateを正として、プルダウンの表示をそれに合わせる
+  selectDate.value = dates.includes(state.selectedDate) ? state.selectedDate : "";
 }
 
 // ---------- 集計・フィルタ ----------
@@ -266,13 +294,17 @@ function renderList() {
 
     const isSelected = a.id === state.selectedId;
 
-    // AI要約(300字)をプレビュー表示。タップで元のPDFページを直接開く。
+    // AI要約(300字)と過去の関連動向を、タップ前からプレビュー表示する。
+    // 要約部分だけタップすると元のPDFページを直接開く。
     let previewHtml = "";
     if (!isSelected) {
       if (a.isRawArticle) {
         previewHtml = `<p class="card-preview raw-note js-open-pdf" data-id="${a.id}">${escapeHtml((a.summary || "").slice(0, 120))}…(人事・データ表/タップで元PDF)</p>`;
       } else if (a.summary) {
-        previewHtml = `<p class="card-preview gemini-summary js-open-pdf" data-id="${a.id}" title="タップで元のPDFページを表示">${escapeHtml(a.summary)}</p>`;
+        previewHtml = `
+          <p class="card-preview gemini-summary js-open-pdf" data-id="${a.id}" title="タップで元のPDFページを表示">${escapeHtml(a.summary)}</p>
+          ${a.history ? `<div class="detail-section history preview-history"><strong>過去の関連動向</strong><div class="body-text">${escapeHtml(a.history)}</div></div>` : ""}
+        `;
       }
     }
 
@@ -290,10 +322,8 @@ function renderList() {
           </div>
           ${historyHtml}
           <div class="detail-section">
-            <strong>元のPDFページ${(a.pageImages || []).length > 1 ? "(次ページも含む)" : ""}</strong>
-            ${(a.pageImages && a.pageImages.length)
-              ? a.pageImages.map(img => `<img class="pdf-page-image" src="${img.dataUrl}" alt="元PDF p.${img.pageNum}">`).join("")
-              : `<p class="empty">元PDFページの画像がありません</p>`}
+            <strong>元のPDFページ${(a.pageNumbers || []).length > 1 ? "(次ページも含む)" : ""}</strong>
+            ${renderPageImagesHtml(a)}
           </div>
         </div>
       `
@@ -352,7 +382,7 @@ function renderDetail() {
       <div class="body-text">${escapeHtml(a.summary || "")}</div>
     </div>
     ${historyHtml}
-    ${(a.pageImages || []).map(img => `<img class="pdf-page-image" src="${img.dataUrl}" alt="元PDF p.${img.pageNum}">`).join("")}
+    ${renderPageImagesHtml(a)}
   `;
 }
 
@@ -360,6 +390,31 @@ function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str || "";
   return div.innerHTML;
+}
+
+// 元PDFページの<img>群を組み立てる。画像本体はGitHub上のraw URLを直接指す
+// (Publicリポジトリならトークン不要で他端末からも見られる)。
+// GitHub未設定、または画像がまだアップロードされていない場合はonerrorで
+// プレースホルダー文言に差し替える。
+function renderPageImagesHtml(a) {
+  if (!GithubStore.isConfigured()) {
+    return `<p class="empty">GitHub連携を設定すると、ここに元PDFページが表示されます</p>`;
+  }
+  const pageNumbers = a.pageNumbers || (a.pageNumber ? [a.pageNumber] : []);
+  if (!pageNumbers.length) {
+    return `<p class="empty">元PDFページの情報がありません</p>`;
+  }
+  return pageNumbers
+    .map(pn => {
+      const url = GithubStore.getPageImageUrl(a.newspaperDate, pn);
+      const placeholderId = `img-missing-${a.id}-${pn}`;
+      return `
+        <img class="pdf-page-image" src="${url}" alt="元PDF p.${pn}"
+             onerror="this.style.display='none'; document.getElementById('${placeholderId}').style.display='block';">
+        <p id="${placeholderId}" class="empty" style="display:none;">p.${pn}の画像が見つかりません(未アップロードか90日経過で削除された可能性があります)</p>
+      `;
+    })
+    .join("");
 }
 
 function selectArticle(id) {
@@ -424,7 +479,21 @@ function render() {
   }
 
   state.articles.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  // トップは「すべての記事」ではなく、一番新しい日付のニュースだけを表示する
+  const availableDates = [...new Set(state.articles.map(a => a.newspaperDate).filter(Boolean))].sort().reverse();
+  if (availableDates.length > 0) {
+    state.selectedDate = availableDates[0];
+  }
+
   updateDateOptions();
   render();
   updateGithubStatus();
+
+  // 90日より古いページ画像を自動削除する(記事のテキストは残す)。
+  // 画面表示をブロックしないよう、バックグラウンドで実行する。
+  NikkeiDB.purgeOldPages().catch(e => console.error("ローカル画像の自動削除に失敗:", e));
+  if (GithubStore.isConfigured()) {
+    GithubStore.purgeOldImages().catch(e => console.error("GitHub画像の自動削除に失敗:", e));
+  }
 })();

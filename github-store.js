@@ -7,8 +7,16 @@
  * として保存する。SafariのITP(7日間未訪問でIndexedDBごと消える仕様)や
  * 端末の入れ替えに影響されない、永続的なバックアップ先として使う。
  *
- * 元PDFページの画像はサイズが大きいため対象外(IndexedDBのみで保持)。
- * 画像が消えても、再取込すれば復元できるので実害は小さい。
+ * 元PDFページの画像も、圧縮した上で
+ *   images/YYYY-MM-DD/{ページ番号}.jpg
+ * として1ページ1ファイルで保存する(記事単位ではなくページ単位。
+ * 同じページを複数の記事が参照しても重複保存しない)。
+ * リポジトリがPublicであれば、raw.githubusercontent.com経由で
+ * トークンなしに他端末からも直接閲覧できる。
+ *
+ * 【保存期間】
+ * 画像は容量が大きいため、90日より古いものは自動的に削除する
+ * (記事のテキストデータ自体は削除しない)。
  *
  * 【容量オーバー時の自動リポジトリ切り替え】
  * GitHubは1リポジトリ1GB程度を推奨上限としているため、現在のリポジトリの
@@ -18,6 +26,7 @@
  */
 
 const GithubStore = (() => {
+  const IMAGE_RETENTION_DAYS = 90;
   const STORAGE_KEY_TOKEN = "nikkei-radar-github-token";
   const STORAGE_KEY_CONFIG = "nikkei-radar-github-config"; // { owner, currentRepo, archivedRepos: [] }
 
@@ -109,6 +118,83 @@ const GithubStore = (() => {
     }
 
     return { skipped: false };
+  }
+
+  // ---------- ページ画像の保存(1ページ1ファイル、重複排除) ----------
+
+  /**
+   * 圧縮済みJPEGのdataUrlをページ単位で保存する。
+   * 既に同じページが保存済みならスキップする(重複アップロード・容量浪費を防ぐ)。
+   * @param {string} date
+   * @param {Array<{pageNum, dataUrl}>} pages
+   */
+  async function savePageImages(date, pages) {
+    if (!isConfigured()) return { skipped: true };
+    const cfg = getConfig();
+    let uploaded = 0;
+
+    for (const p of pages) {
+      const path = `images/${date}/${p.pageNum}.jpg`;
+
+      // 既にあるページはスキップ(同じ日付のPDFを再取込した場合の重複防止)
+      const existsRes = await api(`/repos/${cfg.owner}/${cfg.currentRepo}/contents/${path}`);
+      if (existsRes.ok) continue;
+
+      const base64 = p.dataUrl.split(",")[1];
+      const putRes = await api(`/repos/${cfg.owner}/${cfg.currentRepo}/contents/${path}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          message: `add page image ${date} p.${p.pageNum}`,
+          content: base64,
+        }),
+      });
+      if (!putRes.ok) {
+        const errText = await putRes.text();
+        throw new Error(`ページ画像の保存エラー p.${p.pageNum} (${putRes.status}): ${errText}`);
+      }
+      uploaded++;
+    }
+    return { skipped: false, uploaded };
+  }
+
+  /**
+   * 他端末から読める、認証不要の画像URLを組み立てる(Publicリポジトリ前提)。
+   * そのページが実際に存在するかは保証しない(<img>のonerrorで判定する想定)。
+   */
+  function getPageImageUrl(date, pageNum) {
+    const cfg = getConfig();
+    if (!cfg) return null;
+    return `https://raw.githubusercontent.com/${cfg.owner}/${cfg.currentRepo}/main/images/${date}/${pageNum}.jpg`;
+  }
+
+  // 90日より古いページ画像をGitHub上から削除する(記事テキストは残す)
+  async function purgeOldImages() {
+    if (!isConfigured()) return { deleted: 0 };
+    const cfg = getConfig();
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - IMAGE_RETENTION_DAYS);
+
+    const listRes = await api(`/repos/${cfg.owner}/${cfg.currentRepo}/contents/images`);
+    if (!listRes.ok) return { deleted: 0 }; // imagesフォルダが無ければ何もしない
+    const dateFolders = await listRes.json();
+
+    let deleted = 0;
+    for (const folder of dateFolders) {
+      if (folder.type !== "dir") continue;
+      if (new Date(folder.name) >= cutoff) continue; // まだ保存期間内
+
+      const filesRes = await api(`/repos/${cfg.owner}/${cfg.currentRepo}/contents/${folder.path}`);
+      if (!filesRes.ok) continue;
+      const files = await filesRes.json();
+      for (const f of files) {
+        await api(`/repos/${cfg.owner}/${cfg.currentRepo}/contents/${f.path}`, {
+          method: "DELETE",
+          body: JSON.stringify({ message: `purge old image ${f.path}`, sha: f.sha }),
+        });
+        deleted++;
+      }
+    }
+    return { deleted };
   }
 
   // ---------- 全データの読み込み(端末・IndexedDBが空のときの復元用) ----------
@@ -206,5 +292,8 @@ const GithubStore = (() => {
     loadAllArticles,
     checkAndRotateIfNeeded,
     getRepoSizeKB,
+    savePageImages,
+    getPageImageUrl,
+    purgeOldImages,
   };
 })();
