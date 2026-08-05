@@ -61,15 +61,21 @@ const GithubStore = (() => {
 
   async function api(path, options = {}) {
     const token = getToken();
+    // ヘッダーは必要最小限にする(独自ヘッダーが多いとCORSのプリフライトで
+    // ブロックされる場合があるため。特にContent-Typeは本文があるPUT/POST/
+    // DELETEのときだけ付ける)
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      ...(options.headers || {}),
+    };
+    if (options.body && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+
     const res = await fetch(`https://api.github.com${path}`, {
       ...options,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "Content-Type": "application/json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        ...(options.headers || {}),
-      },
+      headers,
     });
     return res;
   }

@@ -98,7 +98,7 @@ document.getElementById("btn-test-github").addEventListener("click", async () =>
     status.textContent = result.message;
     status.className = "status " + (result.ok ? "ok" : "error");
   } catch (e) {
-    status.textContent = "接続テストでエラーが発生しました: " + e.message;
+    status.textContent = `接続テストでエラーが発生しました: [${e.name}] ${e.message}`;
     status.className = "status error";
   }
 });
