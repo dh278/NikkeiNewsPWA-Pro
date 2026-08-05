@@ -25,7 +25,7 @@
   <label for="input-gemini-key">Google Gemini API キー</label>
   <input type="password" id="input-gemini-key" placeholder="Google AI Studioで取得した無料キーを入力">
   <p class="hint">
-    PDFページの画像から記事の認識・300字要約・過去の関連動向の生成まで、すべてGemini API
+    PDFページの画像から記事の認識・500字要約・過去の関連動向の生成まで、すべてGemini API
     (画像を直接読めるモデル)で行います。無料枠の範囲で利用可能です。
     キーはこの端末のブラウザ内にのみ保存され、サーバーには送信されません。
     <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>で無料取得できます。
@@ -63,7 +63,7 @@
 <section class="panel">
   <h2>PDF取込</h2>
   <p class="hint">
-    紙面全体(1面〜最終面、短信・コラム・連載も含む)の記事について、見出しと300字程度の
+    紙面全体(1面〜最終面、短信・コラム・連載も含む)の記事について、見出しと500字程度の
     要約を一括生成します。あわせて、各記事のトピックに関する「過去の関連動向」も生成します。
     人事異動やマーケットの数表はAI要約を行わず、本文をそのまま表示します。
   </p>
@@ -105,10 +105,10 @@
   </ul>
 </section>
 
-<script src="db.js?v=23"></script>
-<script src="pdf-processor.js?v=23"></script>
-<script src="gemini-extract.js?v=23"></script>
-<script src="github-store.js?v=23"></script>
-<script src="app.js?v=23"></script>
+<script src="db.js?v=24"></script>
+<script src="pdf-processor.js?v=24"></script>
+<script src="gemini-extract.js?v=24"></script>
+<script src="github-store.js?v=24"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>

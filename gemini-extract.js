@@ -1,7 +1,7 @@
 /**
  * gemini-extract.js
  * PDFページの画像をGemini APIに送り、紙面に載っている記事を
- * 見出し＋300字程度の要約＋過去の関連動向＋登場企業名のJSONとして丸ごと抽出する。
+ * 見出し＋500字程度の要約＋過去の関連動向のJSONとして丸ごと抽出する。
  * OCRや自作の記事分割ロジックを持たず、画像理解をGeminiにそのまま任せる設計。
  *
  * 人事異動やマーケットの数表(相場表など)は「要約」に向かないため、
@@ -38,7 +38,11 @@ const GeminiExtract = (() => {
 2. headline: 記事の見出し
 3. isRaw: 人事異動のお知らせ、またはマーケットの数表(相場表など)であれば true、
    通常の記事であれば false
-4. summary: isRawがfalseの場合、本文の内容を300文字程度の日本語で要約したもの。
+4. summary: isRawがfalseの場合、本文の内容を500文字程度の日本語で要約したもの。
+   特に「誰が」「何をした結果」「どうなっている(なりつつある)のか」という、
+   主体・行動・結果(現状)の流れが明確に伝わるように書くこと。単なる話題の
+   紹介ではなく、具体的な当事者名と、その行動によって生じた結果・数字・
+   影響を必ず盛り込むこと。
    isRawがtrueの場合は要約せず、本文(人事異動の氏名・役職や、数表の数値など)を
    できるだけそのまま書き起こしたもの
 5. history: この記事のトピックに関連する過去の経緯・以前の関連ニュース・
@@ -46,7 +50,6 @@ const GeminiExtract = (() => {
    (文字数はsummaryとは別枠で構わないが、簡潔に要点を押さえること)。
    特に関連する過去の動向が見当たらない場合、またはisRawがtrueの場合は
    「特筆すべき過去の関連動向は見当たりません」としてください。
-6. companies: 記事に登場する企業名(複数可、なければ空配列)
 
 出力は次のJSON配列のみとしてください。前置き・説明・マークダウンのコードブロック記法は
 一切不要です。JSON以外の文字を含めないでください。
@@ -56,10 +59,10 @@ const GeminiExtract = (() => {
     "page": <数値>,
     "headline": "<見出し>",
     "isRaw": <true/false>,
-    "summary": "<300文字程度の要約、またはisRaw時はそのままの書き起こし>",
-    "history": "<過去の関連動向>",
-    "companies": ["<企業名>"]
+    "summary": "<500文字程度の要約、またはisRaw時はそのままの書き起こし>",
+    "history": "<過去の関連動向>"
   }
+
 ]
 `.trim();
 
@@ -73,9 +76,8 @@ const GeminiExtract = (() => {
         isRaw: { type: "boolean" },
         summary: { type: "string" },
         history: { type: "string" },
-        companies: { type: "array", items: { type: "string" } },
       },
-      required: ["page", "headline", "isRaw", "summary", "history", "companies"],
+      required: ["page", "headline", "isRaw", "summary", "history"],
     },
   };
 

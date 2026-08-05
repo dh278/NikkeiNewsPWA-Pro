@@ -3,7 +3,7 @@
  *
  * 処理の流れ:
  *   1. PdfProcessor.renderAllPages()  … PDFの全ページを画像化するだけ
- *   2. GeminiExtract.extractAll()     … 画像から記事認識+300字要約+
+ *   2. GeminiExtract.extractAll()     … 画像から記事認識+500字要約+
  *                                        過去の関連動向+企業名を一括生成
  *   3. 各記事に、元になったページの画像(dataUrl)をそのまま持たせておく
  *      → 「元のPDFページを見る」はこの画像を表示するだけで済む
@@ -175,7 +175,7 @@ inputPdf.addEventListener("change", async (e) => {
       }
     );
 
-    // 2. Geminiに画像を渡して、記事の認識+300字要約+過去の関連動向を一括生成
+    // 2. Geminiに画像を渡して、記事の認識+500字要約+過去の関連動向を一括生成
     const rawArticles = await GeminiExtract.extractAll(images, apiKey, (curBatch, totalBatches) => {
       const pct = 50 + Math.round((curBatch / totalBatches) * 50); // 後半50%をGemini処理に割り当て
       progressFill.style.width = pct + "%";
@@ -323,7 +323,7 @@ function renderList() {
 
     const isSelected = a.id === state.selectedId;
 
-    // AI要約(300字)と過去の関連動向を、タップ前からプレビュー表示する。
+    // AI要約(500字)と過去の関連動向を、タップ前からプレビュー表示する。
     // 要約部分だけタップすると元のPDFページを直接開く。
     let previewHtml = "";
     if (!isSelected) {
