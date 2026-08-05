@@ -47,29 +47,12 @@ body {
   max-width: 720px;
   margin: 20px auto;
   padding: 18px 20px;
-  background: white;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
 }
 .panel h2 {
   font-size: 15px;
   margin: 0 0 14px 0;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--line);
-}
-
-/* iPad縦向きなど、ある程度幅がある画面では記事一覧の枠組み(カード風の見た目)を外し、
-   ページ全体にそのまま溶け込ませる(スマホの縦長カードUIをそのまま横幅だけ広げると
-   間延びして見えるため) */
-@media (min-width: 768px) {
-  .panel-list {
-    max-width: none;
-    margin: 20px 0;
-    padding: 18px 0;
-    background: transparent;
-    border: none;
-    border-radius: 0;
-  }
 }
 
 .hidden { display: none !important; }
