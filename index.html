@@ -33,20 +33,22 @@
 
   <hr>
 
-  <label for="input-github-token">GitHub Personal Access Token</label>
+  <label for="input-github-token">GitHub Personal Access Token(PDF取込を行う端末のみ必須)</label>
   <input type="password" id="input-github-token" placeholder="ghp_... (repoスコープの Classic Token)">
   <label for="input-github-owner">GitHubユーザー名</label>
   <input type="text" id="input-github-owner" placeholder="例: dh278">
   <label for="input-github-repo">リポジトリ名(現在使用中)</label>
   <input type="text" id="input-github-repo" placeholder="例: NikkeiNewsPWA-Pro">
   <p class="hint">
-    記事の見出し・要約・過去の関連動向・お気に入りを、GitHubリポジトリに
-    data/YYYY-MM-DD.json として自動保存します(画像は含みません)。
-    Safariの「7日間未訪問でブラウザ内データが消える」仕様に影響されない、
+    記事の見出し・要約・過去の関連動向・お気に入り・元PDFページ画像を、GitHubリポジトリに
+    保存します。Safariの「7日間未訪問でブラウザ内データが消える」仕様に影響されない、
     永続的なバックアップ先として使います。容量が800MBを超えたら新しい
-    リポジトリを自動作成して引き継ぎます。
+    リポジトリを自動作成して引き継ぎます。<br><br>
+    <strong>PDFを取り込む端末</strong>では、トークンとユーザー名・リポジトリ名の3つ全部が必要です。
     トークンは<a href="https://github.com/settings/tokens" target="_blank" rel="noopener">GitHubの設定画面</a>から
-    「repo」スコープ付きのClassic Tokenを発行してください。
+    「repo」スコープ付きのClassic Tokenを発行してください。<br>
+    <strong>閲覧だけしたい他の端末</strong>では、トークンは不要です。ユーザー名とリポジトリ名の
+    2つだけ入力すれば、記事・画像とも閲覧できます(リポジトリがPublicの場合)。
   </p>
 
   <div class="btn-row">
@@ -111,10 +113,10 @@
   </div>
 </section>
 
-<script src="db.js?v=19"></script>
-<script src="pdf-processor.js?v=19"></script>
-<script src="gemini-extract.js?v=19"></script>
-<script src="github-store.js?v=19"></script>
-<script src="app.js?v=19"></script>
+<script src="db.js?v=20"></script>
+<script src="pdf-processor.js?v=20"></script>
+<script src="gemini-extract.js?v=20"></script>
+<script src="github-store.js?v=20"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>

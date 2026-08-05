@@ -426,8 +426,8 @@ function escapeHtml(str) {
 // GitHub未設定、または画像がまだアップロードされていない場合はonerrorで
 // プレースホルダー文言に差し替える。
 function renderPageImagesHtml(a) {
-  if (!GithubStore.isConfigured()) {
-    return `<p class="empty">GitHub連携を設定すると、ここに元PDFページが表示されます</p>`;
+  if (!GithubStore.isReadable()) {
+    return `<p class="empty">設定画面でGitHubユーザー名・リポジトリ名を入力すると、ここに元PDFページが表示されます</p>`;
   }
   const pageNumbers = a.pageNumbers || (a.pageNumber ? [a.pageNumber] : []);
   if (!pageNumbers.length) {
@@ -470,7 +470,7 @@ async function toggleFavorite(id) {
 // GitHubの保存容量の目安をダッシュボードに表示する
 async function updateGithubStatus() {
   const el = document.getElementById("github-status");
-  if (!GithubStore.isConfigured()) {
+  if (!GithubStore.isReadable()) {
     el.classList.add("hidden");
     return;
   }
@@ -479,7 +479,8 @@ async function updateGithubStatus() {
     const sizeKB = await GithubStore.getRepoSizeKB(cfg.owner, cfg.currentRepo);
     const sizeMB = (sizeKB / 1024).toFixed(1);
     const pct = Math.min(100, Math.round((sizeKB / (800 * 1024)) * 100));
-    el.textContent = `GitHub保存: ${cfg.currentRepo} 約${sizeMB}MB使用中(800MB到達で自動的に新リポジトリへ切替 / ${pct}%)`;
+    const mode = GithubStore.isConfigured() ? "" : "(閲覧のみ・このデバイスにトークン未設定)";
+    el.textContent = `GitHub保存: ${cfg.currentRepo} 約${sizeMB}MB使用中(800MB到達で自動的に新リポジトリへ切替 / ${pct}%) ${mode}`;
     el.classList.remove("hidden");
   } catch (e) {
     console.error("GitHub容量取得エラー:", e);
@@ -497,9 +498,10 @@ function render() {
 (async () => {
   state.articles = await NikkeiDB.getAll();
 
-  // ローカル(IndexedDB)が空の場合(Safariの7日間未訪問による自動消去など)、
-  // GitHubにバックアップがあればそこから復元する(画像は含まれない)
-  if (state.articles.length === 0 && GithubStore.isConfigured()) {
+  // ローカル(IndexedDB)が空の場合(Safariの7日間未訪問による自動消去、
+  // または他端末での初回アクセス)、GitHubにデータがあれば読み込む
+  // (閲覧だけならトークン不要。画像は含まれない=表示時にGitHubのURLを直接参照)
+  if (state.articles.length === 0 && GithubStore.isReadable()) {
     try {
       state.articles = await GithubStore.loadAllArticles();
     } catch (e) {

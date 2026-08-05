@@ -53,8 +53,16 @@ const GithubStore = (() => {
   }
 
   function isConfigured() {
+    // 書き込み(PDF取込・保存)に必要な条件: トークン+リポジトリ設定
     const cfg = getConfig();
     return !!(getToken() && cfg && cfg.owner && cfg.currentRepo);
+  }
+
+  // 閲覧(読み込み)だけならトークン不要(Publicリポジトリの読み取りに認証は不要なため)。
+  // 他の端末では、ユーザー名とリポジトリ名だけ設定すれば閲覧できるようにするための判定。
+  function isReadable() {
+    const cfg = getConfig();
+    return !!(cfg && cfg.owner && cfg.currentRepo);
   }
 
   // ---------- GitHub API 共通処理 ----------
@@ -63,10 +71,12 @@ const GithubStore = (() => {
     const token = getToken();
     // ヘッダーは必要最小限にする(独自ヘッダーが多いとCORSのプリフライトで
     // ブロックされる場合があるため。特にContent-Typeは本文があるPUT/POST/
-    // DELETEのときだけ付ける)
+    // DELETEのときだけ付ける)。
+    // トークンが無い端末(閲覧専用)は、Authorizationヘッダー自体を付けない
+    // 匿名リクエストとして送る(Publicリポジトリの読み取りには認証不要のため)。
     const headers = {
-      Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
     };
     if (options.body && !headers["Content-Type"]) {
@@ -214,7 +224,7 @@ const GithubStore = (() => {
   }
 
   async function loadAllArticles() {
-    if (!isConfigured()) return [];
+    if (!isReadable()) return [];
     const cfg = getConfig();
     const repos = [cfg.currentRepo, ...(cfg.archivedRepos || [])];
     const allArticles = [];
@@ -335,6 +345,7 @@ const GithubStore = (() => {
     getConfig,
     setConfig,
     isConfigured,
+    isReadable,
     saveDayArticles,
     loadAllArticles,
     checkAndRotateIfNeeded,
