@@ -1,13 +1,14 @@
 /**
- * app.js (Ver.5)
+ * app.js (Ver.6)
  *
  * 処理の流れ:
- *   1. PdfProcessor.renderAllPages()  … PDFの全ページを画像化するだけ
- *   2. GeminiExtract.extractAll()     … 画像から記事認識+500字要約+
- *                                        過去の関連動向+企業名を一括生成
- *   3. 各記事に、元になったページの画像(dataUrl)をそのまま持たせておく
- *      → 「元のPDFページを見る」はこの画像を表示するだけで済む
- *         (クリック時に再レンダリングする必要がない)
+ *   1. PdfProcessor.renderAllPages()  … PDFの各ページから正確なテキストと
+ *                                        画像(記事区切り判断用の一時データ)を取得
+ *   2. GeminiExtract.extractAll()     … テキスト+画像から記事単位に整理し、
+ *                                        本文全文(fullText)+500字要約+
+ *                                        過去の関連動向を生成
+ *   3. 画像は保存せず破棄する。「タップして全文表示」はfullTextを
+ *      本文に近いフォントで表示するだけなので、画像を保持する必要が無い
  */
 
 const STORAGE_KEY_GEMINI = "nikkei-radar-gemini-key";
@@ -166,6 +167,39 @@ document.getElementById("btn-dedupe").addEventListener("click", async () => {
   }
 });
 
+document.getElementById("btn-delete-images").addEventListener("click", async () => {
+  const status = document.getElementById("delete-images-status");
+
+  if (!GithubStore.isConfigured()) {
+    status.textContent = "GitHubトークンが設定された端末でのみ実行できます。";
+    status.className = "status error";
+    return;
+  }
+
+  const ok = confirm(
+    "Ver.5以前に保存した元PDFページの画像を、GitHubリポジトリから全て削除します。\n" +
+    "本文全文(fullText)を持たない古い記事は、削除後は元ページを見られなくなります。\n" +
+    "よろしいですか？"
+  );
+  if (!ok) return;
+
+  status.textContent = "削除中...";
+  status.className = "status";
+
+  try {
+    const result = await GithubStore.deleteAllImages((cur, total) => {
+      status.textContent = `削除中... (${cur}/${total}日分)`;
+    });
+    status.textContent = `完了: 画像${result.deleted}枚を削除しました。`;
+    status.className = "status ok";
+    await updateGithubStatus();
+  } catch (e) {
+    console.error(e);
+    status.textContent = "削除中にエラーが発生しました: " + e.message;
+    status.className = "status error";
+  }
+});
+
 // ---------- PDF取込 → Gemini抽出(一括) ----------
 
 const inputPdf = document.getElementById("input-pdf");
@@ -173,29 +207,9 @@ const progressWrap = document.getElementById("ocr-progress");
 const progressFill = document.getElementById("progress-fill");
 const progressLabel = document.getElementById("progress-label");
 
-// GitHubへのバックアップ用に、画質・サイズを落とした軽量JPEGを作る
-// (Gemini解析用・ローカル表示用の高画質版とは別に、バックアップ専用の軽量版を作る)
-function compressForBackup(dataUrl, maxWidth = 900, quality = 0.5) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const scale = Math.min(1, maxWidth / img.width);
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL("image/jpeg", quality));
-      canvas.width = 0;
-      canvas.height = 0;
-    };
-    img.onerror = reject;
-    img.src = dataUrl;
-  });
-}
-
 // ファイル名(例: 260804新聞.pdf)から日付を推定する。見つからなければ今日の日付。
-function parseDateFromFilename(filename) {  const m = (filename || "").match(/(\d{2})(\d{2})(\d{2})/);
+function parseDateFromFilename(filename) {
+  const m = (filename || "").match(/(\d{2})(\d{2})(\d{2})/);
   if (m) {
     const [, yy, mm, dd] = m;
     const yyyy = 2000 + parseInt(yy, 10);
@@ -223,54 +237,44 @@ inputPdf.addEventListener("change", async (e) => {
 
   progressWrap.classList.remove("hidden");
   progressFill.style.width = "0%";
-  progressLabel.textContent = "PDFをページ画像に変換中...";
+  progressLabel.textContent = "PDFからテキスト・画像を取得中...";
 
   try {
     const pdfId = `pdf-${Date.now()}`;
 
-    // 1. 全ページを画像化(テキスト抽出やOCRは行わない)
-    const { images, totalPages } = await PdfProcessor.renderAllPages(
+    // 1. 各ページの正確なテキスト(pdf.js抽出、OCR不要)と、
+    //    記事区切り判断用の画像(保存はしない一時データ)を取得
+    const { pages, totalPages } = await PdfProcessor.renderAllPages(
       file,
       (cur, total) => {
-        const pct = Math.round((cur / total) * 50); // 全体の前半50%をレンダリングに割り当て
+        const pct = Math.round((cur / total) * 40); // 全体の前半40%を取得処理に割り当て
         progressFill.style.width = pct + "%";
-        progressLabel.textContent = `ページ画像に変換中... (${cur}/${total}ページ)`;
+        progressLabel.textContent = `PDFからテキスト・画像を取得中... (${cur}/${total}ページ)`;
       }
     );
 
-    // 2. Geminiに画像を渡して、記事の認識+500字要約+過去の関連動向を一括生成
-    const rawArticles = await GeminiExtract.extractAll(images, apiKey, (curBatch, totalBatches) => {
-      const pct = 50 + Math.round((curBatch / totalBatches) * 50); // 後半50%をGemini処理に割り当て
+    // 2. Geminiにテキスト+画像を渡して、記事単位に整理させる
+    //    (fullText=本文全文、summary=500字要約、history=過去の関連動向)
+    const rawArticles = await GeminiExtract.extractAll(pages, apiKey, (curBatch, totalBatches) => {
+      const pct = 40 + Math.round((curBatch / totalBatches) * 60); // 残り60%をGemini処理に割り当て
       progressFill.style.width = pct + "%";
-      progressLabel.textContent = `Geminiで記事を解析中... (${curBatch}/${totalBatches}バッチ)`;
+      progressLabel.textContent = `Geminiで記事を整理中... (${curBatch}/${totalBatches}バッチ)`;
     });
 
-    // 3. 各記事は、元ページの番号(current, 次ページ)だけを持つ。
-    //    画像そのものは記事に埋め込まず、ページ単位で1回だけ別途保存する
-    //    (同じページを複数記事が参照しても重複保存しないため)。
-    const pageNumSet = new Set(images.map(img => img.pageNum));
-
-    const analyzed = rawArticles.map((a) => {
-      const pageNumbers = [a.page];
-      if (pageNumSet.has(a.page + 1)) pageNumbers.push(a.page + 1);
-
-      return {
-        id: `art-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        favorite: false,
-        createdAt: new Date().toISOString(),
-        pdfId,
-        newspaperDate,
-        pageNumber: a.page,
-        headline: a.headline || "(見出し不明)",
-        isRawArticle: !!a.isRaw,
-        summary: a.summary || "",
-        history: a.history || "",
-        pageNumbers,
-      };
-    });
-
-    // ページ画像はローカル(IndexedDB)にページ単位で1回だけ保存する
-    await NikkeiDB.putPages(newspaperDate, images);
+    // 3. 記事データを組み立てる(画像は保持しない。fullTextが正本として残る)
+    const analyzed = rawArticles.map((a) => ({
+      id: `art-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      favorite: false,
+      createdAt: new Date().toISOString(),
+      pdfId,
+      newspaperDate,
+      pageNumber: a.page,
+      headline: a.headline || "(見出し不明)",
+      isRawArticle: !!a.isRaw,
+      fullText: a.fullText || "",
+      summary: a.summary || "",
+      history: a.history || "",
+    }));
 
     // 同じ日付のPDFを再取込した場合、古い記事(前回分)を残したまま追加すると
     // 重複してしまうため、保存前にその日付の既存記事を削除しておく
@@ -287,23 +291,11 @@ inputPdf.addEventListener("change", async (e) => {
       ? `完了: ${analyzed.length}件抽出(自動再試行後もp.${failedBatches.flatMap(f => f.pages).join(",")}が混雑等で失敗。再取込で再挑戦できます)`
       : `完了: ${analyzed.length}件の記事を抽出しました(全${totalPages}ページ)`;
 
-    // GitHubにテキストデータ+圧縮したページ画像をバックアップ保存
+    // GitHubにテキストデータをバックアップ保存(画像は保存しない)
     if (GithubStore.isConfigured()) {
       try {
         progressLabel.textContent = statusMsg + " / GitHubへ保存中...";
         await GithubStore.saveDayArticles(newspaperDate, analyzed);
-
-        progressLabel.textContent = statusMsg + " / ページ画像をGitHubへ圧縮アップロード中...";
-        const compressed = [];
-        for (const img of images) {
-          compressed.push({ pageNum: img.pageNum, dataUrl: await compressForBackup(img.dataUrl) });
-        }
-        const imgResult = await GithubStore.savePageImages(newspaperDate, compressed, (cur, total) => {
-          progressLabel.textContent = `${statusMsg} / 画像アップロード中... (${cur}/${total}枚)`;
-        });
-        if (imgResult.failedPages && imgResult.failedPages.length) {
-          statusMsg += ` (画像p.${imgResult.failedPages.join(",")}は通信不良等でアップロード失敗。設定→重複記事を削除は不要、後で再取込すれば補完されます)`;
-        }
 
         const rotateResult = await GithubStore.checkAndRotateIfNeeded();
         if (rotateResult.rotated) {
@@ -378,7 +370,7 @@ function getFilteredArticles() {
     if (state.favOnly && !a.favorite) return false;
     if (state.selectedDate && a.newspaperDate !== state.selectedDate) return false;
     if (!state.searchQuery) return true;
-    const haystack = [a.headline, a.summary, a.history].join(" ").toLowerCase();
+    const haystack = [a.headline, a.summary, a.history, a.fullText].join(" ").toLowerCase();
     return haystack.includes(state.searchQuery);
   });
 }
@@ -412,10 +404,10 @@ function renderList() {
     let previewHtml = "";
     if (!isSelected) {
       if (a.isRawArticle) {
-        previewHtml = `<p class="card-preview raw-note js-open-pdf" data-id="${a.id}">${escapeHtml((a.summary || "").slice(0, 120))}…(人事・データ表/タップで元PDF)</p>`;
+        previewHtml = `<p class="card-preview raw-note js-open-pdf" data-id="${a.id}">${escapeHtml((a.summary || "").slice(0, 120))}…(人事・データ表/タップで全文表示)</p>`;
       } else if (a.summary) {
         previewHtml = `
-          <p class="card-preview gemini-summary js-open-pdf" data-id="${a.id}" title="タップで元のPDFページを表示">${escapeHtml(a.summary)}</p>
+          <p class="card-preview gemini-summary js-open-pdf" data-id="${a.id}" title="タップで全文を表示">${escapeHtml(a.summary)}</p>
           ${a.history ? `<div class="detail-section history preview-history"><strong>過去の関連動向</strong><div class="body-text">${escapeHtml(a.history)}</div></div>` : ""}
         `;
       }
@@ -434,10 +426,7 @@ function renderList() {
             <div class="body-text">${escapeHtml(a.summary || "")}</div>
           </div>
           ${historyHtml}
-          <div class="detail-section">
-            <strong>元のPDFページ${(a.pageNumbers || []).length > 1 ? "(次ページも含む)" : ""}</strong>
-            ${renderPageImagesHtml(a)}
-          </div>
+          ${renderFullTextHtml(a)}
         </div>
       `
       : "";
@@ -482,25 +471,19 @@ function escapeHtml(str) {
 // (Publicリポジトリならトークン不要で他端末からも見られる)。
 // GitHub未設定、または画像がまだアップロードされていない場合はonerrorで
 // プレースホルダー文言に差し替える。
-function renderPageImagesHtml(a) {
-  if (!GithubStore.isReadable()) {
-    return `<p class="empty">設定画面でGitHubユーザー名・リポジトリ名を入力すると、ここに元PDFページが表示されます</p>`;
+// タップして展開した際の本文表示。Ver.6以降はfullText(本文全文)を
+// 本文に近いフォントで表示する。Ver.5以前の記事でfullTextが無い場合のみ、
+// 当時GitHubに保存した画像を試みに表示する(あれば見られる、無ければ案内文)。
+function renderFullTextHtml(a) {
+  if (!a.fullText) {
+    return `<p class="empty">本文データがありません</p>`;
   }
-  const pageNumbers = a.pageNumbers || (a.pageNumber ? [a.pageNumber] : []);
-  if (!pageNumbers.length) {
-    return `<p class="empty">元PDFページの情報がありません</p>`;
-  }
-  return pageNumbers
-    .map(pn => {
-      const url = GithubStore.getPageImageUrl(a.newspaperDate, pn);
-      const placeholderId = `img-missing-${a.id}-${pn}`;
-      return `
-        <img class="pdf-page-image" src="${url}" alt="元PDF p.${pn}"
-             onerror="this.style.display='none'; document.getElementById('${placeholderId}').style.display='block';">
-        <p id="${placeholderId}" class="empty" style="display:none;">p.${pn}の画像が見つかりません(未アップロードか90日経過で削除された可能性があります)</p>
-      `;
-    })
-    .join("");
+  return `
+    <div class="detail-section full-article-text">
+      <strong>本文全文</strong>
+      <div class="body-text serif">${escapeHtml(a.fullText)}</div>
+    </div>
+  `;
 }
 
 function selectArticle(id) {
@@ -535,9 +518,9 @@ async function updateGithubStatus() {
     const cfg = GithubStore.getConfig();
     const sizeKB = await GithubStore.getRepoSizeKB(cfg.owner, cfg.currentRepo);
     const sizeMB = (sizeKB / 1024).toFixed(1);
-    const pct = Math.min(100, Math.round((sizeKB / (800 * 1024)) * 100));
+    const pct = Math.min(100, Math.round((sizeKB / (5 * 1024 * 1024)) * 100));
     const mode = GithubStore.isConfigured() ? "" : "(閲覧のみ・このデバイスにトークン未設定)";
-    el.textContent = `GitHub保存: ${cfg.currentRepo} 約${sizeMB}MB使用中(800MB到達で自動的に新リポジトリへ切替 / ${pct}%) ${mode}`;
+    el.textContent = `GitHub保存: ${cfg.currentRepo} 約${sizeMB}MB使用中(5GB到達で自動的に新リポジトリへ切替 / ${pct}%) ${mode}`;
     el.classList.remove("hidden");
   } catch (e) {
     console.error("GitHub容量取得エラー:", e);
@@ -591,11 +574,4 @@ function render() {
   updateDateOptions();
   render();
   updateGithubStatus();
-
-  // 90日より古いページ画像を自動削除する(記事のテキストは残す)。
-  // 画面表示をブロックしないよう、バックグラウンドで実行する。
-  NikkeiDB.purgeOldPages().catch(e => console.error("ローカル画像の自動削除に失敗:", e));
-  if (GithubStore.isConfigured()) {
-    GithubStore.purgeOldImages().catch(e => console.error("GitHub画像の自動削除に失敗:", e));
-  }
 })();

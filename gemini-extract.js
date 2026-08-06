@@ -1,12 +1,16 @@
 /**
- * gemini-extract.js
- * PDFページの画像をGemini APIに送り、紙面に載っている記事を
- * 見出し＋500字程度の要約＋過去の関連動向のJSONとして丸ごと抽出する。
- * OCRや自作の記事分割ロジックを持たず、画像理解をGeminiにそのまま任せる設計。
+ * gemini-extract.js (Ver.6)
+ *
+ * PDFページごとの「正確なテキスト(pdf.js抽出)」と「画像(記事区切り判断用)」を
+ * Gemini APIに渡し、記事単位に整理させる。
+ *
+ * 重要: Geminiに文字を1から書き起こさせるのではなく、既に正確なテキストを
+ * 「どこからどこまでが1つの記事か」画像を見ながら仕分け・整形させるだけの
+ * 役割にすることで、精度を上げつつGemini側の負荷も抑えている。
  *
  * 人事異動やマーケットの数表(相場表など)は「要約」に向かないため、
  * 個別の記事として認識はするが要約はせず、本文をできるだけそのまま
- * (isRaw:true として)書き起こすようGeminiに指示する。
+ * (isRaw:true として)扱うようGeminiに指示する。
  */
 
 const GeminiExtract = (() => {
@@ -15,13 +19,20 @@ const GeminiExtract = (() => {
   // 現行の無料利用可能モデル名を確認して書き換えること。
   const MODEL = "gemini-3.1-flash-lite";
 
-  // 1回のリクエストで送るページ数(送信データ量とトークン量を抑えるため分割する)
-  const BATCH_SIZE = 12;
+  // 1回のリクエストで送るページ数。テキストも一緒に渡す分データ量が増えるため、
+  // 画像のみだった頃(12)より少なめにしている。失敗が多い場合はさらに減らすこと。
+  const BATCH_SIZE = 8;
 
   const PROMPT = `
 あなたは日本経済新聞の紙面PDFを解析するアシスタントです。
-これから複数ページぶんの紙面画像を渡します。各画像の直前に「[PDFページ N]」という
-ラベルのテキストを付けます。
+これから複数ページぶんのデータを渡します。各ページについて、
+「[PDFページ N テキスト]」というラベルの後にpdf.jsで抽出した正確な本文テキスト、
+続けてそのページの画像(レイアウト確認用)を渡します。
+
+渡すテキストは既にPDFから正確に抽出済みのものです。文字を新たに書き起こす
+必要はありません。あなたの役割は、このテキストを画像のレイアウトを見ながら
+「どこからどこまでが1つの記事か」を判断し、記事単位に仕分け・整形することです
+(見出しと本文の対応付け、段落の整理など)。文字そのものを勝手に書き換えないこと。
 
 今日の新聞について、1面から最終面(社会面)まで、主要ニュースだけでなく、
 ・短信(数行だけの短いニュース)
@@ -38,14 +49,17 @@ const GeminiExtract = (() => {
 2. headline: 記事の見出し
 3. isRaw: 人事異動のお知らせ、またはマーケットの数表(相場表など)であれば true、
    通常の記事であれば false
-4. summary: isRawがfalseの場合、本文の内容を500文字程度の日本語で要約したもの。
+4. fullText: 渡されたテキストのうち、この記事に該当する部分をそのまま整形したもの
+   (要約や意訳はしない。誤字脱字の訂正程度は可)。isRawの場合も、氏名・役職や
+   数表の数値などをそのまま含めること。この項目は画像を後で保持しない代わりの
+   正本(バックアップ)として使うため、省略しないこと。
+5. summary: isRawがfalseの場合、fullTextの内容を500文字程度の日本語で要約したもの。
    特に「誰が」「何をした結果」「どうなっている(なりつつある)のか」という、
    主体・行動・結果(現状)の流れが明確に伝わるように書くこと。単なる話題の
    紹介ではなく、具体的な当事者名と、その行動によって生じた結果・数字・
    影響を必ず盛り込むこと。
-   isRawがtrueの場合は要約せず、本文(人事異動の氏名・役職や、数表の数値など)を
-   できるだけそのまま書き起こしたもの
-5. history: この記事のトピックに関連する過去の経緯・以前の関連ニュース・
+   isRawがtrueの場合はfullTextと同じ内容でよい(要約しない)。
+6. history: この記事のトピックに関連する過去の経緯・以前の関連ニュース・
    時系列での変化を、あなたの知識をもとに詳しく解説したもの
    (文字数はsummaryとは別枠で構わないが、簡潔に要点を押さえること)。
    特に関連する過去の動向が見当たらない場合、またはisRawがtrueの場合は
@@ -59,10 +73,10 @@ const GeminiExtract = (() => {
     "page": <数値>,
     "headline": "<見出し>",
     "isRaw": <true/false>,
-    "summary": "<500文字程度の要約、またはisRaw時はそのままの書き起こし>",
+    "fullText": "<この記事に該当する、整形済みの本文テキスト>",
+    "summary": "<500文字程度の要約、またはisRaw時はfullTextと同内容>",
     "history": "<過去の関連動向>"
   }
-
 ]
 `.trim();
 
@@ -74,18 +88,22 @@ const GeminiExtract = (() => {
         page: { type: "integer" },
         headline: { type: "string" },
         isRaw: { type: "boolean" },
+        fullText: { type: "string" },
         summary: { type: "string" },
         history: { type: "string" },
       },
-      required: ["page", "headline", "isRaw", "summary", "history"],
+      required: ["page", "headline", "isRaw", "fullText", "summary", "history"],
     },
   };
 
-  async function extractBatch(pageImages, apiKey) {
+  /**
+   * @param {Array<{pageNum, dataUrl, text}>} pageBatch
+   */
+  async function extractBatch(pageBatch, apiKey) {
     const parts = [{ text: PROMPT }];
 
-    for (const { pageNum, dataUrl } of pageImages) {
-      parts.push({ text: `[PDFページ ${pageNum}]` });
+    for (const { pageNum, dataUrl, text } of pageBatch) {
+      parts.push({ text: `[PDFページ ${pageNum} テキスト]\n${text}` });
       parts.push({
         inline_data: {
           mime_type: "image/jpeg",
@@ -139,11 +157,11 @@ const GeminiExtract = (() => {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  async function extractBatchWithRetry(pageImages, apiKey) {
+  async function extractBatchWithRetry(pageBatch, apiKey) {
     let lastErr = null;
     for (let attempt = 0; attempt <= RETRY_LIMIT; attempt++) {
       try {
-        return await extractBatch(pageImages, apiKey);
+        return await extractBatch(pageBatch, apiKey);
       } catch (e) {
         lastErr = e;
         // 503(混雑)・429(レート制限)は時間を置けば回復するのでリトライする
@@ -156,18 +174,18 @@ const GeminiExtract = (() => {
   }
 
   /**
-   * @param {Array<{pageNum, dataUrl}>} pageImages
+   * @param {Array<{pageNum, dataUrl, text}>} pages
    * @param {string} apiKey
    * @param {function} onProgress (currentBatch, totalBatches) => void
    */
-  async function extractAll(pageImages, apiKey, onProgress) {
+  async function extractAll(pages, apiKey, onProgress) {
     if (!apiKey) {
       throw new Error("Gemini APIキーが未設定です。設定画面から登録してください。");
     }
 
     const batches = [];
-    for (let i = 0; i < pageImages.length; i += BATCH_SIZE) {
-      batches.push(pageImages.slice(i, i + BATCH_SIZE));
+    for (let i = 0; i < pages.length; i += BATCH_SIZE) {
+      batches.push(pages.slice(i, i + BATCH_SIZE));
     }
 
     const results = [];
@@ -180,13 +198,13 @@ const GeminiExtract = (() => {
       } catch (e) {
         // このバッチは諦めて先へ進む(1バッチの失敗で全体を止めない)
         console.error(`バッチ${i + 1}が失敗しました(該当ページはスキップされます):`, e);
-        failedBatches.push({ batchIndex: i, pages: batches[i].map(p => p.pageNum), images: batches[i], error: e.message });
+        failedBatches.push({ batchIndex: i, pages: batches[i].map(p => p.pageNum), pageBatch: batches[i], error: e.message });
       }
     }
 
     // 全バッチ処理後、失敗した分だけもう一段階まとめてリトライする。
     // 「混雑」は数十秒〜数分待つと解消することが多いため、通常のバッチ間隔より
-    // 長めに待ってから、まだ画像がメモリに残っている失敗バッチだけを再試行する。
+    // 長めに待ってから、まだデータがメモリに残っている失敗バッチだけを再試行する。
     if (failedBatches.length > 0) {
       onProgress && onProgress(batches.length, batches.length); // 進捗表示は完了扱いのまま維持
       console.warn(`${failedBatches.length}バッチが失敗。20秒待って再試行します...`);
@@ -195,11 +213,11 @@ const GeminiExtract = (() => {
       const stillFailed = [];
       for (const fb of failedBatches) {
         try {
-          const retryResult = await extractBatchWithRetry(fb.images, apiKey);
+          const retryResult = await extractBatchWithRetry(fb.pageBatch, apiKey);
           results.push(...retryResult);
         } catch (e) {
           console.error(`再試行後も失敗(p.${fb.pages.join(",")}):`, e);
-          stillFailed.push({ ...fb, images: undefined, error: e.message });
+          stillFailed.push({ ...fb, pageBatch: undefined, error: e.message });
         }
       }
       failedBatches = stillFailed;

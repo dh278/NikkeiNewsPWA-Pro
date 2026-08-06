@@ -1,7 +1,14 @@
 /**
- * pdf-processor.js (Ver.5)
- * PDFの各ページをそのまま画像化するだけ。テキスト抽出やOCRは行わない。
- * 記事の認識・要約はGemini(画像を直接読める)に任せる。
+ * pdf-processor.js (Ver.6)
+ * PDFの各ページから「正確なテキスト」と「記事区切り判断用の画像」の
+ * 両方を取得する。
+ *
+ * テキストはpdf.jsの埋め込みテキスト抽出機能(page.getTextContent)を使う。
+ * OCRではなく、PDFの中に実際に存在する文字データをそのまま取り出すため、
+ * 誤字が原理的に発生しない(OCRより正確)。
+ *
+ * 画像は保存はせず、Geminiに「どこからどこまでが1つの記事か」を
+ * 判断してもらうための一時データとして使う。
  */
 
 const PdfProcessor = (() => {
@@ -19,30 +26,38 @@ const PdfProcessor = (() => {
 
     const arrayBuffer = await file.arrayBuffer();
     // 日本語のCIDフォント(Adobe-Japan1)を含むPDFはCMap定義がないと
-    // 本文が正しく描画されない(空白になる)。cMapUrlの指定が必須。
+    // 本文が正しく取得できない(空白・文字化けになる)。cMapUrlの指定が必須。
     const pdf = await pdfjsLib.getDocument({
       data: arrayBuffer,
       cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/",
       cMapPacked: true
     }).promise;
     const total = pdf.numPages;
-    const images = [];
+    const pages = []; // [{ pageNum, dataUrl, text }]
 
     for (let i = 1; i <= total; i++) {
       onProgress && onProgress(i, total);
       const page = await pdf.getPage(i);
+
+      // 1. 正確なテキストを抽出(OCR不要、PDF内の実データをそのまま取得)
+      const textContent = await page.getTextContent();
+      const text = textContent.items.map(item => item.str).join("\n");
+
+      // 2. 記事区切り判断用の画像(保存はしない一時データ)
       const viewport = page.getViewport({ scale });
       const canvas = document.createElement("canvas");
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       const ctx = canvas.getContext("2d");
       await page.render({ canvasContext: ctx, viewport }).promise;
-      images.push({ pageNum: i, dataUrl: canvas.toDataURL("image/jpeg", 0.72) });
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
       canvas.width = 0;
       canvas.height = 0;
+
+      pages.push({ pageNum: i, dataUrl, text });
     }
 
-    return { images, totalPages: total };
+    return { pages, totalPages: total };
   }
 
   return { renderAllPages };

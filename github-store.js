@@ -1,36 +1,27 @@
 /**
- * github-store.js
+ * github-store.js (Ver.6)
  *
- * 記事のテキストデータ(見出し・要約・過去の関連動向・日付・ページ番号・
- * お気に入り・人事/データ表フラグ)を、GitHubリポジトリ内に
+ * 記事のテキストデータ(見出し・本文全文・要約・過去の関連動向・日付・
+ * ページ番号・お気に入り・人事/データ表フラグ)を、GitHubリポジトリ内に
  *   data/YYYY-MM-DD.json
  * として保存する。SafariのITP(7日間未訪問でIndexedDBごと消える仕様)や
  * 端末の入れ替えに影響されない、永続的なバックアップ先として使う。
  *
- * 元PDFページの画像も、圧縮した上で
- *   images/YYYY-MM-DD/{ページ番号}.jpg
- * として1ページ1ファイルで保存する(記事単位ではなくページ単位。
- * 同じページを複数の記事が参照しても重複保存しない)。
- * リポジトリがPublicであれば、raw.githubusercontent.com経由で
- * トークンなしに他端末からも直接閲覧できる。
- *
- * 【保存期間】
- * 画像は容量が大きいため、90日より古いものは自動的に削除する
- * (記事のテキストデータ自体は削除しない)。
+ * 記事の本文全文(fullText)を取込時に保存するため、画像は保存しない
+ * (Geminiに記事の区切りを判断させる一時データとしてのみ使い、処理後は破棄)。
+ * タップして展開した際は、画像ではなくfullTextを表示する。
  *
  * 【容量オーバー時の自動リポジトリ切り替え】
- * GitHubは1リポジトリ1GB程度を推奨上限としているため、現在のリポジトリの
- * サイズが800MB(1GBの8割)を超えたら、新しいリポジトリを自動作成して
- * 書き込み先を切り替える。古いリポジトリは読み取り専用のアーカイブとして
- * 引き続き参照する。
+ * テキストのみなので通常は到達しない想定の保険として、現在のリポジトリの
+ * サイズが5GB(GitHub公式推奨の10GB以内に収める安全マージン)を超えたら、
+ * 新しいリポジトリを自動作成して書き込み先を切り替える。
  */
 
 const GithubStore = (() => {
-  const IMAGE_RETENTION_DAYS = 90;
   const STORAGE_KEY_TOKEN = "nikkei-radar-github-token";
   const STORAGE_KEY_CONFIG = "nikkei-radar-github-config"; // { owner, currentRepo, archivedRepos: [] }
 
-  const ROTATE_THRESHOLD_KB = 800 * 1024; // 800MB
+  const ROTATE_THRESHOLD_KB = 5 * 1024 * 1024; // 5GB(GitHub公式推奨の10GB以内に収まるよう余裕を持たせた値)
 
   // ---------- 設定の取得・保存 ----------
 
@@ -96,14 +87,11 @@ const GithubStore = (() => {
   function base64ToUtf8(b64) {
     return decodeURIComponent(escape(atob(b64)));
   }
-  function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
 
   // ---------- 1日ぶんのデータの保存 ----------
 
   /**
-   * 記事配列(画像フィールドは除いた軽量版)をその日付のファイルとして保存する。
+   * 記事配列をその日付のファイルとして保存する。
    * 既存ファイルがあれば上書き(SHAを取得してから更新)、無ければ新規作成。
    */
   async function saveDayArticles(date, articles) {
@@ -111,8 +99,7 @@ const GithubStore = (() => {
 
     const cfg = getConfig();
     const path = `data/${date}.json`;
-    const lightArticles = articles.map(({ pageImages, ...rest }) => rest); // 画像は除外
-    const content = JSON.stringify({ date, articles: lightArticles }, null, 2);
+    const content = JSON.stringify({ date, articles }, null, 2);
 
     // 既存ファイルのSHAを取得(無ければ404で新規作成扱い)
     let sha = undefined;
@@ -125,7 +112,7 @@ const GithubStore = (() => {
     const putRes = await api(`/repos/${cfg.owner}/${cfg.currentRepo}/contents/${path}`, {
       method: "PUT",
       body: JSON.stringify({
-        message: `update ${date} (${lightArticles.length}件)`,
+        message: `update ${date} (${articles.length}件)`,
         content: utf8ToBase64(content),
         sha,
       }),
@@ -139,94 +126,24 @@ const GithubStore = (() => {
     return { skipped: false };
   }
 
-  // ---------- ページ画像の保存(1ページ1ファイル、重複排除) ----------
-
   /**
-   * 圧縮済みJPEGのdataUrlをページ単位で保存する。
-   * 既に同じページが保存済みならスキップする(重複アップロード・容量浪費を防ぐ)。
-   * @param {string} date
-   * @param {Array<{pageNum, dataUrl}>} pages
+   * 過去にリポジトリへ保存された画像(images/フォルダ)を一括削除する
+   * (設定画面の「取込済み画像を全て削除」ボタンから呼び出す想定)。
    */
-  async function savePageImages(date, pages, onProgress) {
-    if (!isConfigured()) return { skipped: true };
-    const cfg = getConfig();
-
-    // 存在確認は1ページずつではなく、そのフォルダを1回だけリスト取得して済ませる
-    // (65ページなら130回→1回に削減。電波が弱い環境でのタイムアウトを減らす)
-    const existingNames = new Set();
-    const listRes = await api(`/repos/${cfg.owner}/${cfg.currentRepo}/contents/images/${date}`);
-    if (listRes.ok) {
-      const files = await listRes.json();
-      for (const f of files) existingNames.add(f.name);
-    }
-
-    const targets = pages.filter(p => !existingNames.has(`${p.pageNum}.jpg`));
-    let uploaded = 0;
-    const failedPages = [];
-
-    for (let i = 0; i < targets.length; i++) {
-      const p = targets[i];
-      onProgress && onProgress(i + 1, targets.length);
-      const path = `images/${date}/${p.pageNum}.jpg`;
-      const base64 = p.dataUrl.split(",")[1];
-
-      let lastErr = null;
-      for (let attempt = 0; attempt <= 2; attempt++) {
-        try {
-          const putRes = await api(`/repos/${cfg.owner}/${cfg.currentRepo}/contents/${path}`, {
-            method: "PUT",
-            body: JSON.stringify({
-              message: `add page image ${date} p.${p.pageNum}`,
-              content: base64,
-            }),
-          });
-          if (!putRes.ok) {
-            const errText = await putRes.text();
-            throw new Error(`(${putRes.status}) ${errText}`);
-          }
-          lastErr = null;
-          uploaded++;
-          break;
-        } catch (e) {
-          lastErr = e;
-          await sleep(2000 * (attempt + 1)); // 電波不安定・混雑対策の待機
-        }
-      }
-      if (lastErr) {
-        console.error(`ページ画像アップロード失敗 p.${p.pageNum}:`, lastErr);
-        failedPages.push(p.pageNum);
-        // 1ページの失敗で全体を止めず、次のページへ続行する
-      }
-    }
-
-    return { skipped: false, uploaded, failedPages };
-  }
-
-  /**
-   * 他端末から読める、認証不要の画像URLを組み立てる(Publicリポジトリ前提)。
-   * そのページが実際に存在するかは保証しない(<img>のonerrorで判定する想定)。
-   */
-  function getPageImageUrl(date, pageNum) {
-    const cfg = getConfig();
-    if (!cfg) return null;
-    return `https://raw.githubusercontent.com/${cfg.owner}/${cfg.currentRepo}/main/images/${date}/${pageNum}.jpg`;
-  }
-
-  // 90日より古いページ画像をGitHub上から削除する(記事テキストは残す)
-  async function purgeOldImages() {
+  async function deleteAllImages(onProgress) {
     if (!isConfigured()) return { deleted: 0 };
     const cfg = getConfig();
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - IMAGE_RETENTION_DAYS);
 
     const listRes = await api(`/repos/${cfg.owner}/${cfg.currentRepo}/contents/images`);
     if (!listRes.ok) return { deleted: 0 }; // imagesフォルダが無ければ何もしない
     const dateFolders = await listRes.json();
 
     let deleted = 0;
+    let processedFolders = 0;
     for (const folder of dateFolders) {
       if (folder.type !== "dir") continue;
-      if (new Date(folder.name) >= cutoff) continue; // まだ保存期間内
+      processedFolders++;
+      onProgress && onProgress(processedFolders, dateFolders.length);
 
       const filesRes = await api(`/repos/${cfg.owner}/${cfg.currentRepo}/contents/${folder.path}`);
       if (!filesRes.ok) continue;
@@ -234,7 +151,7 @@ const GithubStore = (() => {
       for (const f of files) {
         await api(`/repos/${cfg.owner}/${cfg.currentRepo}/contents/${f.path}`, {
           method: "DELETE",
-          body: JSON.stringify({ message: `purge old image ${f.path}`, sha: f.sha }),
+          body: JSON.stringify({ message: `delete legacy image ${f.path}`, sha: f.sha }),
         });
         deleted++;
       }
@@ -281,7 +198,7 @@ const GithubStore = (() => {
   }
 
   /**
-   * 現在のリポジトリが800MBを超えていたら、新しいリポジトリを自動作成して
+   * 現在のリポジトリが5GBを超えていたら、新しいリポジトリを自動作成して
    * 書き込み先を切り替える。呼び出し側は戻り値のrotatedを見て、
    * 必要ならユーザーに通知する。
    */
@@ -379,9 +296,7 @@ const GithubStore = (() => {
     loadAllArticles,
     checkAndRotateIfNeeded,
     getRepoSizeKB,
-    savePageImages,
-    getPageImageUrl,
-    purgeOldImages,
+    deleteAllImages,
     testConnection,
   };
 })();

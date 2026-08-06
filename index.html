@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>日経営業レーダー Ver.5</title>
+<title>日経営業レーダー Ver.6</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="style.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -11,7 +11,7 @@
 <body>
 
 <header class="app-header">
-  <h1>日経営業レーダー <span class="version">Ver.5</span></h1>
+  <h1>日経営業レーダー <span class="version">Ver.6</span></h1>
   <div class="header-actions">
     <button id="btn-settings" class="btn-icon">設定</button>
     <input type="search" id="input-search-header" class="header-search" placeholder="検索">
@@ -28,8 +28,8 @@
   <label for="input-gemini-key">Google Gemini API キー</label>
   <input type="password" id="input-gemini-key" placeholder="Google AI Studioで取得した無料キーを入力">
   <p class="hint">
-    PDFページの画像から記事の認識・500字要約・過去の関連動向の生成まで、すべてGemini API
-    (画像を直接読めるモデル)で行います。無料枠の範囲で利用可能です。
+    PDFページのテキスト(pdf.jsで正確に抽出)と画像(記事区切り判断用)をGemini APIに渡し、
+    記事単位への整理・500字要約・過去の関連動向の生成を行います。無料枠の範囲で利用可能です。
     キーはこの端末のブラウザ内にのみ保存され、サーバーには送信されません。
     <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>で無料取得できます。
   </p>
@@ -43,15 +43,16 @@
   <label for="input-github-repo">リポジトリ名(現在使用中)</label>
   <input type="text" id="input-github-repo" placeholder="例: NikkeiNewsPWA-Pro">
   <p class="hint">
-    記事の見出し・要約・過去の関連動向・お気に入り・元PDFページ画像を、GitHubリポジトリに
-    保存します。Safariの「7日間未訪問でブラウザ内データが消える」仕様に影響されない、
-    永続的なバックアップ先として使います。容量が800MBを超えたら新しい
-    リポジトリを自動作成して引き継ぎます。<br><br>
+    記事の見出し・本文全文・要約・過去の関連動向・お気に入りを、GitHubリポジトリに
+    保存します(画像は保存しません)。Safariの「7日間未訪問でブラウザ内データが消える」
+    仕様に影響されない、永続的なバックアップ先として使います。テキストのみのため
+    容量はごくわずかですが、念のため5GBを超えたら新しいリポジトリを自動作成して
+    引き継ぐ保険を備えています。<br><br>
     <strong>PDFを取り込む端末</strong>では、トークンとユーザー名・リポジトリ名の3つ全部が必要です。
     トークンは<a href="https://github.com/settings/tokens" target="_blank" rel="noopener">GitHubの設定画面</a>から
     「repo」スコープ付きのClassic Tokenを発行してください。<br>
     <strong>閲覧だけしたい他の端末</strong>では、トークンは不要です。ユーザー名とリポジトリ名の
-    2つだけ入力すれば、記事・画像とも閲覧できます(リポジトリがPublicの場合)。
+    2つだけ入力すれば閲覧できます(リポジトリがPublicの場合)。
   </p>
 
   <div class="btn-row">
@@ -72,6 +73,16 @@
     <button id="btn-dedupe" class="btn-secondary">重複記事を削除</button>
   </div>
   <p id="dedupe-status" class="status"></p>
+
+  <p class="hint">
+    以前のバージョンで元PDFページの画像をGitHubに保存していた場合、それらは
+    不要になっています(本文全文をテキストで保存する方式に変更したため)。
+    リポジトリから画像をまとめて削除して整理できます。
+  </p>
+  <div class="btn-row">
+    <button id="btn-delete-images" class="btn-secondary">取込済み画像を全て削除</button>
+  </div>
+  <p id="delete-images-status" class="status"></p>
 </section>
 
 <!-- PDF取込 -->
@@ -120,10 +131,10 @@
   </ul>
 </section>
 
-<script src="db.js?v=30"></script>
-<script src="pdf-processor.js?v=30"></script>
-<script src="gemini-extract.js?v=30"></script>
-<script src="github-store.js?v=30"></script>
-<script src="app.js?v=30"></script>
+<script src="db.js?v=32"></script>
+<script src="pdf-processor.js?v=32"></script>
+<script src="gemini-extract.js?v=32"></script>
+<script src="github-store.js?v=32"></script>
+<script src="app.js?v=32"></script>
 </body>
 </html>

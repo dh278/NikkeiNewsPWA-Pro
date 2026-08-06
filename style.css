@@ -166,6 +166,13 @@ button {
 .detail-section.history { background: #fdf8ee; border-radius: var(--radius); padding: 8px 10px; }
 .detail-section.history strong { color: #8a5a00; }
 
+.detail-section.full-article-text { background: #fbfbf9; border-radius: var(--radius); padding: 8px 10px; }
+.body-text.serif {
+  font-family: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", serif;
+  font-size: 15px;
+  line-height: 1.9;
+}
+
 .card-badges { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
 .badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
 .badge-company { background: #eaf1fb; color: #1a4d8f; }
