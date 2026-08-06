@@ -171,7 +171,7 @@ const GeminiExtract = (() => {
     }
 
     const results = [];
-    const failedBatches = [];
+    let failedBatches = [];
     for (let i = 0; i < batches.length; i++) {
       onProgress && onProgress(i + 1, batches.length);
       try {
@@ -180,12 +180,34 @@ const GeminiExtract = (() => {
       } catch (e) {
         // このバッチは諦めて先へ進む(1バッチの失敗で全体を止めない)
         console.error(`バッチ${i + 1}が失敗しました(該当ページはスキップされます):`, e);
-        failedBatches.push({ batchIndex: i, pages: batches[i].map(p => p.pageNum), error: e.message });
+        failedBatches.push({ batchIndex: i, pages: batches[i].map(p => p.pageNum), images: batches[i], error: e.message });
       }
     }
+
+    // 全バッチ処理後、失敗した分だけもう一段階まとめてリトライする。
+    // 「混雑」は数十秒〜数分待つと解消することが多いため、通常のバッチ間隔より
+    // 長めに待ってから、まだ画像がメモリに残っている失敗バッチだけを再試行する。
+    if (failedBatches.length > 0) {
+      onProgress && onProgress(batches.length, batches.length); // 進捗表示は完了扱いのまま維持
+      console.warn(`${failedBatches.length}バッチが失敗。20秒待って再試行します...`);
+      await sleep(20000);
+
+      const stillFailed = [];
+      for (const fb of failedBatches) {
+        try {
+          const retryResult = await extractBatchWithRetry(fb.images, apiKey);
+          results.push(...retryResult);
+        } catch (e) {
+          console.error(`再試行後も失敗(p.${fb.pages.join(",")}):`, e);
+          stillFailed.push({ ...fb, images: undefined, error: e.message });
+        }
+      }
+      failedBatches = stillFailed;
+    }
+
     if (failedBatches.length > 0) {
       const failedPages = failedBatches.flatMap(f => f.pages).join(", ");
-      console.warn(`取得できなかったページ: ${failedPages}`);
+      console.warn(`最終的に取得できなかったページ: ${failedPages}`);
     }
     results.failedBatches = failedBatches; // 呼び出し側でエラー内容を表示できるように
     return results;

@@ -84,6 +84,30 @@ const NikkeiDB = (() => {
     });
   }
 
+  // 指定した新聞の日付の記事だけを削除する(同じ日付のPDFを再取込したときに
+  // 古い記事と重複させないため、新規保存の直前に呼び出す想定)
+  async function deleteByDate(newspaperDate) {
+    const db = await open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      const store = tx.objectStore(STORE);
+      const req = store.openCursor();
+      let deleted = 0;
+      req.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          if (cursor.value.newspaperDate === newspaperDate) {
+            cursor.delete();
+            deleted++;
+          }
+          cursor.continue();
+        }
+      };
+      tx.oncomplete = () => resolve(deleted);
+      tx.onerror = (e) => reject(e.target.error);
+    });
+  }
+
   // ---------- ページ画像(重複排除・日付ひもづけ) ----------
 
   function pageKey(newspaperDate, pageNum) {
@@ -147,5 +171,5 @@ const NikkeiDB = (() => {
     });
   }
 
-  return { bulkAdd, put, getAll, clear, putPages, getPage, purgeOldPages };
+  return { bulkAdd, put, getAll, clear, deleteByDate, putPages, getPage, purgeOldPages };
 })();

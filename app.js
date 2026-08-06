@@ -209,14 +209,19 @@ inputPdf.addEventListener("change", async (e) => {
     // ページ画像はローカル(IndexedDB)にページ単位で1回だけ保存する
     await NikkeiDB.putPages(newspaperDate, images);
 
+    // 同じ日付のPDFを再取込した場合、古い記事(前回分)を残したまま追加すると
+    // 重複してしまうため、保存前にその日付の既存記事を削除しておく
+    await NikkeiDB.deleteByDate(newspaperDate);
+    state.articles = state.articles.filter(a => a.newspaperDate !== newspaperDate);
+
     await NikkeiDB.bulkAdd(analyzed);
     state.articles = [...analyzed, ...state.articles];
     updateDateOptions();
     render();
 
-    const failCount = (rawArticles.failedBatches || []).length;
-    let statusMsg = failCount
-      ? `完了: ${analyzed.length}件抽出(一部${failCount}バッチが混雑等で失敗。再取込で再挑戦できます)`
+    const failedBatches = rawArticles.failedBatches || [];
+    let statusMsg = failedBatches.length
+      ? `完了: ${analyzed.length}件抽出(自動再試行後もp.${failedBatches.flatMap(f => f.pages).join(",")}が混雑等で失敗。再取込で再挑戦できます)`
       : `完了: ${analyzed.length}件の記事を抽出しました(全${totalPages}ページ)`;
 
     // GitHubにテキストデータ+圧縮したページ画像をバックアップ保存
