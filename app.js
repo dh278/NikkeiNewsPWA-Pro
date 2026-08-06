@@ -103,6 +103,69 @@ document.getElementById("btn-test-github").addEventListener("click", async () =>
   }
 });
 
+document.getElementById("btn-dedupe").addEventListener("click", async () => {
+  const status = document.getElementById("dedupe-status");
+  const before = state.articles.length;
+
+  // 重複キー: 日付+ページ番号+見出し が同じものを同一記事とみなす。
+  // 同じキーが複数あれば、作成日時が一番新しいものだけを残す。
+  const bestByKey = new Map();
+  for (const a of state.articles) {
+    const key = `${a.newspaperDate}_${a.pageNumber}_${a.headline}`;
+    const existing = bestByKey.get(key);
+    if (!existing || new Date(a.createdAt) > new Date(existing.createdAt)) {
+      bestByKey.set(key, a);
+    }
+  }
+  const deduped = [...bestByKey.values()];
+  const removedCount = before - deduped.length;
+
+  if (removedCount === 0) {
+    status.textContent = "重複は見つかりませんでした。";
+    status.className = "status ok";
+    return;
+  }
+
+  const ok = confirm(`${removedCount}件の重複記事を削除します(${before}件 → ${deduped.length}件)。よろしいですか？`);
+  if (!ok) return;
+
+  status.textContent = "削除中...";
+  status.className = "status";
+
+  try {
+    // 影響を受けた日付ごとに、ローカルを「削除してから重複排除後の分だけ入れ直す」
+    const affectedDates = [...new Set(state.articles.map(a => a.newspaperDate).filter(Boolean))];
+    for (const date of affectedDates) {
+      await NikkeiDB.deleteByDate(date);
+      const forThisDate = deduped.filter(a => a.newspaperDate === date);
+      if (forThisDate.length) await NikkeiDB.bulkAdd(forThisDate);
+    }
+
+    state.articles = deduped;
+    updateDateOptions();
+    render();
+
+    // GitHub側も、影響を受けた日付ぶんだけ上書き保存し直す(書き込み権限がある場合のみ)
+    if (GithubStore.isConfigured()) {
+      for (const date of affectedDates) {
+        const forThisDate = deduped.filter(a => a.newspaperDate === date);
+        if (forThisDate.length) {
+          await GithubStore.saveDayArticles(date, forThisDate).catch(e =>
+            console.error(`GitHub側の重複排除反映に失敗(${date}):`, e)
+          );
+        }
+      }
+    }
+
+    status.textContent = `完了: ${removedCount}件削除しました(${before}件 → ${deduped.length}件)。`;
+    status.className = "status ok";
+  } catch (e) {
+    console.error(e);
+    status.textContent = "削除中にエラーが発生しました: " + e.message;
+    status.className = "status error";
+  }
+});
+
 // ---------- PDF取込 → Gemini抽出(一括) ----------
 
 const inputPdf = document.getElementById("input-pdf");
@@ -235,7 +298,12 @@ inputPdf.addEventListener("change", async (e) => {
         for (const img of images) {
           compressed.push({ pageNum: img.pageNum, dataUrl: await compressForBackup(img.dataUrl) });
         }
-        await GithubStore.savePageImages(newspaperDate, compressed);
+        const imgResult = await GithubStore.savePageImages(newspaperDate, compressed, (cur, total) => {
+          progressLabel.textContent = `${statusMsg} / 画像アップロード中... (${cur}/${total}枚)`;
+        });
+        if (imgResult.failedPages && imgResult.failedPages.length) {
+          statusMsg += ` (画像p.${imgResult.failedPages.join(",")}は通信不良等でアップロード失敗。設定→重複記事を削除は不要、後で再取込すれば補完されます)`;
+        }
 
         const rotateResult = await GithubStore.checkAndRotateIfNeeded();
         if (rotateResult.rotated) {

@@ -60,6 +60,18 @@
     <button id="btn-close-settings" class="btn-secondary">閉じる</button>
   </div>
   <p id="key-status" class="status"></p>
+
+  <hr>
+
+  <label>メンテナンス</label>
+  <p class="hint">
+    同じ日付のPDFを複数回取り込んだ場合など、見出し・日付・ページが同じ記事が
+    重複して残っていることがあります。以下のボタンで、重複を1件だけ残して整理できます。
+  </p>
+  <div class="btn-row">
+    <button id="btn-dedupe" class="btn-secondary">重複記事を削除</button>
+  </div>
+  <p id="dedupe-status" class="status"></p>
 </section>
 
 <!-- PDF取込 -->
@@ -108,10 +120,10 @@
   </ul>
 </section>
 
-<script src="db.js?v=28"></script>
-<script src="pdf-processor.js?v=28"></script>
-<script src="gemini-extract.js?v=28"></script>
-<script src="github-store.js?v=28"></script>
-<script src="app.js?v=28"></script>
+<script src="db.js?v=30"></script>
+<script src="pdf-processor.js?v=30"></script>
+<script src="gemini-extract.js?v=30"></script>
+<script src="github-store.js?v=30"></script>
+<script src="app.js?v=30"></script>
 </body>
 </html>

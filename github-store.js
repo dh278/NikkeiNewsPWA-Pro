@@ -96,6 +96,9 @@ const GithubStore = (() => {
   function base64ToUtf8(b64) {
     return decodeURIComponent(escape(atob(b64)));
   }
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
 
   // ---------- 1日ぶんのデータの保存 ----------
 
@@ -144,33 +147,59 @@ const GithubStore = (() => {
    * @param {string} date
    * @param {Array<{pageNum, dataUrl}>} pages
    */
-  async function savePageImages(date, pages) {
+  async function savePageImages(date, pages, onProgress) {
     if (!isConfigured()) return { skipped: true };
     const cfg = getConfig();
-    let uploaded = 0;
 
-    for (const p of pages) {
-      const path = `images/${date}/${p.pageNum}.jpg`;
-
-      // 既にあるページはスキップ(同じ日付のPDFを再取込した場合の重複防止)
-      const existsRes = await api(`/repos/${cfg.owner}/${cfg.currentRepo}/contents/${path}`);
-      if (existsRes.ok) continue;
-
-      const base64 = p.dataUrl.split(",")[1];
-      const putRes = await api(`/repos/${cfg.owner}/${cfg.currentRepo}/contents/${path}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          message: `add page image ${date} p.${p.pageNum}`,
-          content: base64,
-        }),
-      });
-      if (!putRes.ok) {
-        const errText = await putRes.text();
-        throw new Error(`ページ画像の保存エラー p.${p.pageNum} (${putRes.status}): ${errText}`);
-      }
-      uploaded++;
+    // 存在確認は1ページずつではなく、そのフォルダを1回だけリスト取得して済ませる
+    // (65ページなら130回→1回に削減。電波が弱い環境でのタイムアウトを減らす)
+    const existingNames = new Set();
+    const listRes = await api(`/repos/${cfg.owner}/${cfg.currentRepo}/contents/images/${date}`);
+    if (listRes.ok) {
+      const files = await listRes.json();
+      for (const f of files) existingNames.add(f.name);
     }
-    return { skipped: false, uploaded };
+
+    const targets = pages.filter(p => !existingNames.has(`${p.pageNum}.jpg`));
+    let uploaded = 0;
+    const failedPages = [];
+
+    for (let i = 0; i < targets.length; i++) {
+      const p = targets[i];
+      onProgress && onProgress(i + 1, targets.length);
+      const path = `images/${date}/${p.pageNum}.jpg`;
+      const base64 = p.dataUrl.split(",")[1];
+
+      let lastErr = null;
+      for (let attempt = 0; attempt <= 2; attempt++) {
+        try {
+          const putRes = await api(`/repos/${cfg.owner}/${cfg.currentRepo}/contents/${path}`, {
+            method: "PUT",
+            body: JSON.stringify({
+              message: `add page image ${date} p.${p.pageNum}`,
+              content: base64,
+            }),
+          });
+          if (!putRes.ok) {
+            const errText = await putRes.text();
+            throw new Error(`(${putRes.status}) ${errText}`);
+          }
+          lastErr = null;
+          uploaded++;
+          break;
+        } catch (e) {
+          lastErr = e;
+          await sleep(2000 * (attempt + 1)); // 電波不安定・混雑対策の待機
+        }
+      }
+      if (lastErr) {
+        console.error(`ページ画像アップロード失敗 p.${p.pageNum}:`, lastErr);
+        failedPages.push(p.pageNum);
+        // 1ページの失敗で全体を止めず、次のページへ続行する
+      }
+    }
+
+    return { skipped: false, uploaded, failedPages };
   }
 
   /**
