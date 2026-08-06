@@ -481,14 +481,24 @@ function render() {
 (async () => {
   state.articles = await NikkeiDB.getAll();
 
-  // ローカル(IndexedDB)が空の場合(Safariの7日間未訪問による自動消去、
-  // または他端末での初回アクセス)、GitHubにデータがあれば読み込む
-  // (閲覧だけならトークン不要。画像は含まれない=表示時にGitHubのURLを直接参照)
-  if (state.articles.length === 0 && GithubStore.isReadable()) {
+  // ローカル(IndexedDB)とGitHubを毎回突き合わせて同期する。
+  // iOSでは「ホーム画面に追加したPWA」と「Safariタブ」が同じURLでも
+  // ストレージ領域が別々になる仕様があり、片方だけ空/一部欠けることがある。
+  // そのため「ローカルが空の時だけ」ではなく、毎回GitHub側も確認し、
+  // ローカルに無い記事があれば追加する形にする(画像はGitHubのURLを直接
+  // 参照するだけなので、テキストデータの同期だけで実用上は十分)。
+  if (GithubStore.isReadable()) {
     try {
-      state.articles = await GithubStore.loadAllArticles();
+      const remoteArticles = await GithubStore.loadAllArticles();
+      const localIds = new Set(state.articles.map(a => a.id));
+      const missingFromLocal = remoteArticles.filter(a => !localIds.has(a.id));
+      if (missingFromLocal.length > 0) {
+        state.articles = [...state.articles, ...missingFromLocal];
+        // 次回以降はこの端末のローカルにも残るよう保存しておく(画像フィールドは無いのでそのままでよい)
+        await NikkeiDB.bulkAdd(missingFromLocal);
+      }
     } catch (e) {
-      console.error("GitHubからの復元に失敗:", e);
+      console.error("GitHubとの同期に失敗:", e);
     }
   }
 
