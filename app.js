@@ -255,10 +255,21 @@ inputPdf.addEventListener("change", async (e) => {
 
 // ---------- 検索・日付ジャンプ ----------
 
-document.getElementById("input-search").addEventListener("input", (e) => {
-  state.searchQuery = e.target.value.trim().toLowerCase();
+// ヘッダーの検索窓と、検索パネル内の検索窓は同じ検索条件を共有する。
+// どちらに入力しても、もう片方の表示値も揃える。
+const inputSearchHeader = document.getElementById("input-search-header");
+const inputSearchPanel = document.getElementById("input-search");
+
+function handleSearchInput(value) {
+  state.searchQuery = value.trim().toLowerCase();
+  inputSearchHeader.value = value;
+  inputSearchPanel.value = value;
   renderList();
-});
+}
+
+inputSearchHeader.addEventListener("input", (e) => handleSearchInput(e.target.value));
+inputSearchPanel.addEventListener("input", (e) => handleSearchInput(e.target.value));
+
 document.getElementById("filter-fav-only").addEventListener("change", (e) => {
   state.favOnly = e.target.checked;
   renderList();

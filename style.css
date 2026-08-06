@@ -35,6 +35,15 @@ body {
 .app-header h1 { font-size: 18px; margin: 0; }
 .version { font-size: 12px; color: var(--muted); font-weight: normal; }
 
+.header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.header-search {
+  width: 110px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+
 .banner-error {
   background: var(--warn-bg);
   color: var(--danger);
