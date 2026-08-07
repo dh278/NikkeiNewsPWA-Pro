@@ -188,39 +188,55 @@ const GeminiExtract = (() => {
       batches.push(pages.slice(i, i + BATCH_SIZE));
     }
 
+    // バッチを同時に複数並行で処理し、待ち時間を短縮する。
+    // 無料枠のレート制限(15req/分程度)を超えないよう、同時実行数は控えめにする。
+    const CONCURRENCY = 3;
+
     const results = [];
     let failedBatches = [];
-    for (let i = 0; i < batches.length; i++) {
-      onProgress && onProgress(i + 1, batches.length);
+    let completed = 0;
+
+    async function runBatch(batch, index) {
       try {
-        const batchResult = await extractBatchWithRetry(batches[i], apiKey);
+        const batchResult = await extractBatchWithRetry(batch, apiKey);
         results.push(...batchResult);
       } catch (e) {
-        // このバッチは諦めて先へ進む(1バッチの失敗で全体を止めない)
-        console.error(`バッチ${i + 1}が失敗しました(該当ページはスキップされます):`, e);
-        failedBatches.push({ batchIndex: i, pages: batches[i].map(p => p.pageNum), pageBatch: batches[i], error: e.message });
+        console.error(`バッチ${index + 1}が失敗しました(該当ページはスキップされます):`, e);
+        failedBatches.push({ batchIndex: index, pages: batch.map(p => p.pageNum), pageBatch: batch, error: e.message });
+      } finally {
+        completed++;
+        onProgress && onProgress(completed, batches.length);
       }
     }
 
-    // 全バッチ処理後、失敗した分だけもう一段階まとめてリトライする。
+    for (let i = 0; i < batches.length; i += CONCURRENCY) {
+      const chunk = batches.slice(i, i + CONCURRENCY);
+      await Promise.all(chunk.map((batch, j) => runBatch(batch, i + j)));
+    }
+
+    // 全バッチ処理後、失敗した分だけもう一段階まとめてリトライする(こちらは並列)。
     // 「混雑」は数十秒〜数分待つと解消することが多いため、通常のバッチ間隔より
     // 長めに待ってから、まだデータがメモリに残っている失敗バッチだけを再試行する。
     if (failedBatches.length > 0) {
-      onProgress && onProgress(batches.length, batches.length); // 進捗表示は完了扱いのまま維持
       console.warn(`${failedBatches.length}バッチが失敗。20秒待って再試行します...`);
       await sleep(20000);
 
-      const stillFailed = [];
-      for (const fb of failedBatches) {
-        try {
-          const retryResult = await extractBatchWithRetry(fb.pageBatch, apiKey);
-          results.push(...retryResult);
-        } catch (e) {
-          console.error(`再試行後も失敗(p.${fb.pages.join(",")}):`, e);
-          stillFailed.push({ ...fb, pageBatch: undefined, error: e.message });
-        }
+      const retryTargets = failedBatches;
+      failedBatches = [];
+      for (let i = 0; i < retryTargets.length; i += CONCURRENCY) {
+        const chunk = retryTargets.slice(i, i + CONCURRENCY);
+        await Promise.all(
+          chunk.map(async (fb) => {
+            try {
+              const retryResult = await extractBatchWithRetry(fb.pageBatch, apiKey);
+              results.push(...retryResult);
+            } catch (e) {
+              console.error(`再試行後も失敗(p.${fb.pages.join(",")}):`, e);
+              failedBatches.push({ ...fb, pageBatch: undefined, error: e.message });
+            }
+          })
+        );
       }
-      failedBatches = stillFailed;
     }
 
     if (failedBatches.length > 0) {
