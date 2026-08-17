@@ -165,7 +165,21 @@ const GithubStore = (() => {
     const res = await api(`/repos/${owner}/${repo}/contents/data/${filename}`);
     if (!res.ok) return [];
     const data = await res.json();
-    const json = JSON.parse(base64ToUtf8(data.content));
+
+    let text;
+    if (data.content) {
+      // 1MB未満のファイルは、この応答に直接base64で内容が入っている
+      text = base64ToUtf8(data.content);
+    } else if (data.download_url) {
+      // 1MB以上のファイルはcontentが省略され、download_urlから別途取得する必要がある
+      const rawRes = await fetch(data.download_url);
+      if (!rawRes.ok) return [];
+      text = await rawRes.text();
+    } else {
+      return [];
+    }
+
+    const json = JSON.parse(text);
     return json.articles || [];
   }
 
