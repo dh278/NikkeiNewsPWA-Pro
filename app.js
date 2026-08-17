@@ -534,31 +534,8 @@ function render() {
 
 // ---------- 初期化 ----------
 
-(async () => {
-  state.articles = await NikkeiDB.getAll();
-
-  // ローカル(IndexedDB)とGitHubを毎回突き合わせて同期する。
-  // iOSでは「ホーム画面に追加したPWA」と「Safariタブ」が同じURLでも
-  // ストレージ領域が別々になる仕様があり、片方だけ空/一部欠けることがある。
-  // そのため「ローカルが空の時だけ」ではなく、毎回GitHub側も確認し、
-  // ローカルに無い記事があれば追加する形にする(画像はGitHubのURLを直接
-  // 参照するだけなので、テキストデータの同期だけで実用上は十分)。
-  if (GithubStore.isReadable()) {
-    try {
-      const remoteArticles = await GithubStore.loadAllArticles();
-      const localIds = new Set(state.articles.map(a => a.id));
-      const missingFromLocal = remoteArticles.filter(a => !localIds.has(a.id));
-      if (missingFromLocal.length > 0) {
-        state.articles = [...state.articles, ...missingFromLocal];
-        // 次回以降はこの端末のローカルにも残るよう保存しておく(画像フィールドは無いのでそのままでよい)
-        await NikkeiDB.bulkAdd(missingFromLocal);
-      }
-    } catch (e) {
-      console.error("GitHubとの同期に失敗:", e);
-      alert("GitHubからの記事読み込みに失敗しました:\n" + e.message);
-    }
-  }
-
+// 記事配列を並べ替え、日付の初期選択・一覧の更新・再描画までまとめて行う
+function sortAndRefresh() {
   // 日付は新しい順、同じ日付内では紙面のページ順(1面から)に並べる
   state.articles.sort((a, b) => {
     const dateDiff = (b.newspaperDate || "").localeCompare(a.newspaperDate || "");
@@ -568,11 +545,38 @@ function render() {
 
   // トップは「すべての記事」ではなく、一番新しい日付のニュースだけを表示する
   const availableDates = [...new Set(state.articles.map(a => a.newspaperDate).filter(Boolean))].sort().reverse();
-  if (availableDates.length > 0) {
+  if (availableDates.length > 0 && !state.selectedDate) {
     state.selectedDate = availableDates[0];
   }
 
   updateDateOptions();
   render();
+}
+
+(async () => {
+  // 1. まずローカル(IndexedDB)にある分だけで即座に表示する(待たせない)
+  state.articles = await NikkeiDB.getAll();
+  sortAndRefresh();
   updateGithubStatus();
+
+  // 2. GitHubとの同期は裏側で行い、終わったら差分だけ追加して再描画する。
+  //    iOSでは「ホーム画面に追加したPWA」と「Safariタブ」が同じURLでも
+  //    ストレージ領域が別々になる仕様があり、片方だけ空/一部欠けることがある。
+  //    そのため「ローカルが空の時だけ」ではなく、毎回GitHub側も確認する。
+  if (GithubStore.isReadable()) {
+    try {
+      const remoteArticles = await GithubStore.loadAllArticles();
+      const localIds = new Set(state.articles.map(a => a.id));
+      const missingFromLocal = remoteArticles.filter(a => !localIds.has(a.id));
+      if (missingFromLocal.length > 0) {
+        state.articles = [...state.articles, ...missingFromLocal];
+        // 次回以降はこの端末のローカルにも残るよう保存しておく
+        await NikkeiDB.bulkAdd(missingFromLocal);
+        sortAndRefresh(); // 差分があった時だけ再描画する
+      }
+    } catch (e) {
+      console.error("GitHubとの同期に失敗:", e);
+      alert("GitHubからの記事読み込みに失敗しました:\n" + e.message);
+    }
+  }
 })();
