@@ -177,7 +177,17 @@ const GithubStore = (() => {
 
     for (const repo of repos) {
       const listRes = await api(`/repos/${cfg.owner}/${repo}/contents/data`);
-      if (!listRes.ok) continue; // dataフォルダがまだ無い場合など
+      if (!listRes.ok) {
+        if (listRes.status === 403) {
+          // GitHub APIの利用回数制限(未認証は1時間60回まで)に達した可能性が高い
+          const errText = await listRes.text();
+          throw new Error(
+            `GitHub APIの利用回数上限に達した可能性があります(403)。` +
+            `未認証アクセスは1時間あたり60回までのため、しばらく時間をおいて再度開いてください。詳細: ${errText}`
+          );
+        }
+        continue; // 404等(dataフォルダがまだ無い場合など)は無視して次のリポジトリへ
+      }
       const files = await listRes.json();
       for (const f of files) {
         if (!f.name.endsWith(".json")) continue;

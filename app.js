@@ -555,6 +555,7 @@ function render() {
       }
     } catch (e) {
       console.error("GitHubとの同期に失敗:", e);
+      alert("GitHubからの記事読み込みに失敗しました:\n" + e.message);
     }
   }
 
