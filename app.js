@@ -558,11 +558,9 @@ document.addEventListener("selectionchange", () => {
     return;
   }
 
+  // 選択位置に追従させると、iOS標準の「コピー/調べる/翻訳」メニューと
+  // 重なって隠れてしまうため、画面下部の固定位置に表示する
   pendingSelectedText = text;
-  const range = sel.getRangeAt(0);
-  const rect = range.getBoundingClientRect();
-  btnLookupSelection.style.top = `${window.scrollY + rect.top - 44}px`;
-  btnLookupSelection.style.left = `${window.scrollX + rect.left}px`;
   btnLookupSelection.classList.remove("hidden");
 });
 

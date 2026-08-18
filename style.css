@@ -19,6 +19,7 @@ body {
   color: var(--ink);
   line-height: 1.6;
   padding-bottom: 40px;
+  overflow-x: hidden;
 }
 
 .app-header {
@@ -208,15 +209,18 @@ button {
 /* ---------- テキスト選択→用語調査ボタン・モーダル (Ver.6追加分) ---------- */
 
 .lookup-btn {
-  position: absolute;
+  position: fixed;
   z-index: 50;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
   background: var(--ink);
   color: white;
   border: none;
-  border-radius: 20px;
-  padding: 8px 14px;
-  font-size: 13px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  border-radius: 24px;
+  padding: 12px 20px;
+  font-size: 14px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
 }
 
 .modal-overlay {
