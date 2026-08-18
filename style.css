@@ -204,3 +204,45 @@ button {
 .detail-section { margin-top: 12px; font-size: 14px; }
 .detail-section ul { margin: 6px 0 0 0; padding-left: 20px; }
 .body-text { white-space: pre-wrap; font-size: 13px; margin-top: 6px; color: #333; }
+
+/* ---------- テキスト選択→用語調査ボタン・モーダル (Ver.6追加分) ---------- */
+
+.lookup-btn {
+  position: absolute;
+  z-index: 50;
+  background: var(--ink);
+  color: white;
+  border: none;
+  border-radius: 20px;
+  padding: 8px 14px;
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.modal-box {
+  background: white;
+  width: 100%;
+  max-width: 720px;
+  max-height: 80vh;
+  overflow-y: auto;
+  border-radius: 16px 16px 0 0;
+  padding: 16px 20px 24px;
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+}
+.modal-body .detail-section { margin-bottom: 4px; }

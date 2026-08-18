@@ -53,11 +53,19 @@ const GeminiExtract = (() => {
    (要約や意訳はしない。誤字脱字の訂正程度は可)。isRawの場合も、氏名・役職や
    数表の数値などをそのまま含めること。この項目は画像を後で保持しない代わりの
    正本(バックアップ)として使うため、省略しないこと。
-5. summary: isRawがfalseの場合、fullTextの内容を500文字程度の日本語で要約したもの。
+5. summary: isRawがfalseの場合、fullTextの内容を日本語で要約したもの。
+   基本は500文字程度を目安とするが、本文に複数の企業名が登場し、
+   それらを全て盛り込もうとすると500文字では収まらない場合に限り、
+   文字数を増やしてよい。ただし、できるだけ短く、どんなに長くても
+   1000文字は超えないこと。
    特に「誰が」「何をした結果」「どうなっている(なりつつある)のか」という、
    主体・行動・結果(現状)の流れが明確に伝わるように書くこと。単なる話題の
    紹介ではなく、具体的な当事者名と、その行動によって生じた結果・数字・
    影響を必ず盛り込むこと。
+   本文中に登場する企業名・組織名は、文字数が許す限りできるだけ全て要約に
+   含めること(main主体以外の、関連銘柄・比較対象として触れられている
+   企業名も省略しないこと)。1000文字の上限を超えそうな場合のみ、
+   重要度が低いものから省略すること。
    isRawがtrueの場合はfullTextと同じ内容でよい(要約しない)。
 6. history: この記事のトピックに関連する過去の経緯・以前の関連ニュース・
    時系列での変化を、あなたの知識をもとに詳しく解説したもの
@@ -247,5 +255,71 @@ const GeminiExtract = (() => {
     return results;
   }
 
-  return { extractAll };
+  // ---------- 選択した用語の調査(過去のニュース・最近の変遷) ----------
+
+  const LOOKUP_PROMPT_TEMPLATE = (term) => `
+あなたは日本経済新聞を担当する調査アシスタントです。
+「${term}」という語句について、あなたの知識をもとに次の2つを日本語でまとめてください。
+
+1. history: この語句に関連する過去のニュース・経緯を解説してください。
+2. recentTrend: 直近(ここ数カ月〜1年程度)での動向・変遷を解説してください。
+   数字や日付が分かる場合は具体的に盛り込んでください。
+
+情報が乏しい語句の場合は、無理に詳しく書かず
+「特筆すべき情報は見当たりません」としてください。
+
+出力は次のJSON形式のみとしてください。前置き・説明・マークダウンのコードブロック記法は
+一切不要です。JSON以外の文字を含めないでください。
+
+{
+  "history": "<過去のニュース・経緯>",
+  "recentTrend": "<直近の動向・変遷>"
+}
+`.trim();
+
+  async function lookupTerm(term, apiKey) {
+    if (!apiKey) {
+      throw new Error("Gemini APIキーが未設定です。設定画面から登録してください。");
+    }
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: LOOKUP_PROMPT_TEMPLATE(term) }] }],
+          generationConfig: {
+            temperature: 0.2,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "object",
+              properties: {
+                history: { type: "string" },
+                recentTrend: { type: "string" },
+              },
+              required: ["history", "recentTrend"],
+            },
+          },
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Gemini API error (${res.status}): ${errText}`);
+    }
+
+    const data = await res.json();
+    const candidate = data.candidates && data.candidates[0];
+    const text =
+      (candidate && candidate.content && candidate.content.parts
+        ? candidate.content.parts.map(p => p.text || "").join("")
+        : "") || "";
+
+    const cleaned = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+    return JSON.parse(cleaned);
+  }
+
+  return { extractAll, lookupTerm };
 })();

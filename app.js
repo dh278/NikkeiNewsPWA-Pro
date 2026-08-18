@@ -5,7 +5,7 @@
  *   1. PdfProcessor.renderAllPages()  … PDFの各ページから正確なテキストと
  *                                        画像(記事区切り判断用の一時データ)を取得
  *   2. GeminiExtract.extractAll()     … テキスト+画像から記事単位に整理し、
- *                                        本文全文(fullText)+500字要約+
+ *                                        本文全文(fullText)+500〜1000字要約+
  *                                        過去の関連動向を生成
  *   3. 画像は保存せず破棄する。「タップして全文表示」はfullTextを
  *      本文に近いフォントで表示するだけなので、画像を保持する必要が無い
@@ -254,7 +254,7 @@ inputPdf.addEventListener("change", async (e) => {
     );
 
     // 2. Geminiにテキスト+画像を渡して、記事単位に整理させる
-    //    (fullText=本文全文、summary=500字要約、history=過去の関連動向)
+    //    (fullText=本文全文、summary=500〜1000字要約、history=過去の関連動向)
     const rawArticles = await GeminiExtract.extractAll(pages, apiKey, (curBatch, totalBatches) => {
       const pct = 40 + Math.round((curBatch / totalBatches) * 60); // 残り60%をGemini処理に割り当て
       progressFill.style.width = pct + "%";
@@ -531,6 +531,77 @@ function render() {
   renderDashboard();
   renderList();
 }
+
+// ---------- テキスト選択→用語調査 ----------
+
+const btnLookupSelection = document.getElementById("btn-lookup-selection");
+const lookupModal = document.getElementById("lookup-modal");
+const lookupModalTitle = document.getElementById("lookup-modal-title");
+const lookupModalBody = document.getElementById("lookup-modal-body");
+const articleListEl = document.getElementById("article-list");
+
+let pendingSelectedText = "";
+
+document.addEventListener("selectionchange", () => {
+  const sel = window.getSelection();
+  const text = sel ? sel.toString().trim() : "";
+
+  // 記事一覧の中で、かつ短すぎない選択のときだけボタンを出す
+  // (誤操作防止のため、長すぎる選択も対象外にする)
+  if (!text || text.length < 2 || text.length > 40) {
+    btnLookupSelection.classList.add("hidden");
+    return;
+  }
+  const anchorNode = sel.anchorNode;
+  if (!anchorNode || !articleListEl.contains(anchorNode)) {
+    btnLookupSelection.classList.add("hidden");
+    return;
+  }
+
+  pendingSelectedText = text;
+  const range = sel.getRangeAt(0);
+  const rect = range.getBoundingClientRect();
+  btnLookupSelection.style.top = `${window.scrollY + rect.top - 44}px`;
+  btnLookupSelection.style.left = `${window.scrollX + rect.left}px`;
+  btnLookupSelection.classList.remove("hidden");
+});
+
+btnLookupSelection.addEventListener("click", async () => {
+  const term = pendingSelectedText;
+  btnLookupSelection.classList.add("hidden");
+  if (!term) return;
+
+  const apiKey = getGeminiKey();
+  if (!apiKey) {
+    alert("設定画面でGoogle Gemini APIキーを登録してください。");
+    return;
+  }
+
+  lookupModalTitle.textContent = `「${term}」について`;
+  lookupModalBody.innerHTML = `<p class="empty">調べています...</p>`;
+  lookupModal.classList.remove("hidden");
+
+  try {
+    const result = await GeminiExtract.lookupTerm(term, apiKey);
+    lookupModalBody.innerHTML = `
+      <div class="detail-section history">
+        <strong>過去のニュース・経緯</strong>
+        <div class="body-text">${escapeHtml(result.history || "")}</div>
+      </div>
+      <div class="detail-section" style="margin-top:12px;">
+        <strong>直近の動向・変遷</strong>
+        <div class="body-text">${escapeHtml(result.recentTrend || "")}</div>
+      </div>
+    `;
+  } catch (e) {
+    console.error(e);
+    lookupModalBody.innerHTML = `<p class="empty">調査に失敗しました: ${escapeHtml(e.message)}</p>`;
+  }
+});
+
+document.getElementById("btn-close-lookup").addEventListener("click", () => {
+  lookupModal.classList.add("hidden");
+});
 
 // ---------- 初期化 ----------
 
