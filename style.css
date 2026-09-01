@@ -54,7 +54,7 @@ body {
 }
 
 .panel {
-  max-width: 720px;
+  max-width: none;
   margin: 20px auto;
   padding: 18px 20px;
 }
