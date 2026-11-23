@@ -6,7 +6,7 @@
 <title>日経営業レーダー Ver.6</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="style.css">
-<link rel="stylesheet" href="features.css?v=41">
+<link rel="stylesheet" href="features.css?v=42">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
@@ -29,38 +29,77 @@
   pdf.jsライブラリの読み込みに失敗しました。通信環境を確認し、ページを再読み込みしてください。
 </div>
 
+<!-- 設定パネル -->
 <section id="panel-settings" class="panel hidden">
   <h2>設定</h2>
   <label for="input-gemini-key">Google Gemini API キー</label>
   <input type="password" id="input-gemini-key" placeholder="Google AI Studioで取得した無料キーを入力">
-  <p class="hint">PDFページのテキストと記事区切り用画像をGemini APIに渡し、記事単位の整理、要約、過去の関連動向を生成します。キーはこの端末に保存されます。<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a></p>
+  <p class="hint">
+    PDFページのテキスト(pdf.jsで正確に抽出)と画像(記事区切り判断用)をGemini APIに渡し、
+    記事単位への整理・500〜1000字要約・過去の関連動向の生成を行います。無料枠の範囲で利用可能です。
+    キーはこの端末のブラウザ内にのみ保存され、サーバーには送信されません。
+    <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>で無料取得できます。
+  </p>
+
   <hr>
+
   <label for="input-github-token">GitHub Personal Access Token(PDF取込を行う端末のみ必須)</label>
   <input type="password" id="input-github-token" placeholder="ghp_... (repoスコープの Classic Token)">
   <label for="input-github-owner">GitHubユーザー名</label>
   <input type="text" id="input-github-owner" placeholder="例: dh278">
   <label for="input-github-repo">リポジトリ名(現在使用中)</label>
   <input type="text" id="input-github-repo" placeholder="例: NikkeiNewsPWA-Pro">
-  <p class="hint">記事本文、要約、過去動向、お気に入りをGitHubへ保存します。閲覧専用端末ではトークンは不要です。</p>
+  <p class="hint">
+    記事の見出し・本文全文・要約・過去の関連動向・お気に入りを、GitHubリポジトリに
+    保存します(画像は保存しません)。Safariの「7日間未訪問でブラウザ内データが消える」
+    仕様に影響されない、永続的なバックアップ先として使います。テキストのみのため
+    容量はごくわずかですが、念のため5GBを超えたら新しいリポジトリを自動作成して
+    引き継ぐ保険を備えています。<br><br>
+    <strong>PDFを取り込む端末</strong>では、トークンとユーザー名・リポジトリ名の3つ全部が必要です。
+    トークンは<a href="https://github.com/settings/tokens" target="_blank" rel="noopener">GitHubの設定画面</a>から
+    「repo」スコープ付きのClassic Tokenを発行してください。<br>
+    <strong>閲覧だけしたい他の端末</strong>では、トークンは不要です。ユーザー名とリポジトリ名の
+    2つだけ入力すれば閲覧できます(リポジトリがPublicの場合)。
+  </p>
+
   <div class="btn-row">
     <button id="btn-save-key" class="btn-primary" type="button">保存</button>
     <button id="btn-test-github" class="btn-secondary" type="button">GitHub接続テスト</button>
     <button id="btn-close-settings" class="btn-secondary" type="button">閉じる</button>
   </div>
   <p id="key-status" class="status"></p>
+
   <hr>
+
   <label>メンテナンス</label>
-  <p class="hint">重複記事を日付・ページ・見出しごとに整理できます。</p>
-  <div class="btn-row"><button id="btn-dedupe" class="btn-secondary" type="button">重複記事を削除</button></div>
+  <p class="hint">
+    同じ日付のPDFを複数回取り込んだ場合など、見出し・日付・ページが同じ記事が
+    重複して残っていることがあります。以下のボタンで、重複を1件だけ残して整理できます。
+  </p>
+  <div class="btn-row">
+    <button id="btn-dedupe" class="btn-secondary" type="button">重複記事を削除</button>
+  </div>
   <p id="dedupe-status" class="status"></p>
-  <p class="hint">以前のバージョンで保存したPDF画像をGitHubリポジトリからまとめて削除できます。</p>
-  <div class="btn-row"><button id="btn-delete-images" class="btn-secondary" type="button">取込済み画像を全て削除</button></div>
+
+  <p class="hint">
+    以前のバージョンで元PDFページの画像をGitHubに保存していた場合、それらは
+    不要になっています(本文全文をテキストで保存する方式に変更したため)。
+    リポジトリから画像をまとめて削除して整理できます。
+  </p>
+  <div class="btn-row">
+    <button id="btn-delete-images" class="btn-secondary" type="button">取込済み画像を全て削除</button>
+  </div>
   <p id="delete-images-status" class="status"></p>
 </section>
 
+<!-- PDF取込 -->
 <section class="panel">
   <h2>PDF取込</h2>
-  <p class="hint">紙面全体の記事、見出し、要約、過去の関連動向を一括生成します。人事異動やマーケットの数表は本文をそのまま表示します。</p>
+  <p class="hint">
+    紙面全体(1面〜最終面、短信・コラム・連載も含む)の記事について、見出しと500字(企業名が多い場合は最大1000字まで拡張)程度の
+    要約を一括生成します。あわせて、各記事のトピックに関する「過去の関連動向」も生成します。
+    人事異動やマーケットの数表はAI要約を行わず、本文をそのまま表示します。
+  </p>
   <input type="file" id="input-pdf" accept="application/pdf">
   <div id="ocr-progress" class="progress hidden">
     <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
@@ -68,6 +107,7 @@
   </div>
 </section>
 
+<!-- ダッシュボード -->
 <section class="panel">
   <h2>ダッシュボード</h2>
   <div class="dashboard">
@@ -77,6 +117,7 @@
   <p id="github-status" class="hint hidden"></p>
 </section>
 
+<!-- 検索・日付ジャンプ -->
 <section class="panel">
   <h2>検索・日付ジャンプ</h2>
   <label for="select-date">新聞の日付</label>
@@ -85,6 +126,7 @@
   <label class="checkbox-row"><input type="checkbox" id="filter-fav-only"> お気に入りのみ表示</label>
 </section>
 
+<!-- 記事一覧(営業カード) -->
 <section class="panel">
   <h2>記事一覧</h2>
   <ul id="article-list" class="card-list"><li class="empty">記事はまだありません</li></ul>
@@ -102,11 +144,11 @@
   </div>
 </div>
 
-<script src="db.js?v=41"></script>
-<script src="pdf-processor.js?v=41"></script>
-<script src="gemini-extract.js?v=41"></script>
-<script src="github-store.js?v=41"></script>
-<script src="app.js?v=41"></script>
-<script src="features.js?v=41"></script>
+<script src="db.js?v=42"></script>
+<script src="pdf-processor.js?v=42"></script>
+<script src="gemini-extract.js?v=42"></script>
+<script src="github-store.js?v=42"></script>
+<script src="app.js?v=42"></script>
+<script src="features.js?v=42"></script>
 </body>
 </html>
