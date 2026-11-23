@@ -6,6 +6,7 @@
 <title>日経営業レーダー Ver.6</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="features.css?v=40">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
@@ -14,8 +15,14 @@
   <h1>日経営業レーダー <span class="version">Ver.6</span></h1>
   <div class="header-actions">
     <button id="btn-settings" class="btn-icon">設定</button>
-    <input type="search" id="input-search-header" class="header-search" placeholder="検索">
+    <input type="search" id="input-search-header" class="header-search" placeholder="検索" aria-label="記事を検索">
+    <button id="feature-read-selected" class="btn-icon feature-icon" type="button" title="選択中の記事を読み上げ" aria-label="選択中の記事を読み上げ">🔊</button>
+    <button id="feature-font-size" class="btn-icon feature-icon" type="button" title="文字サイズを変更" aria-label="文字サイズを変更">Aa</button>
+    <button id="feature-keywords" class="btn-icon feature-icon" type="button" title="通知キーワードを登録" aria-label="通知キーワードを登録">🔔</button>
+    <button id="feature-scroll-top" class="btn-icon feature-icon" type="button" title="一番上へ" aria-label="ページの一番上へ">↑</button>
+    <button id="feature-scroll-bottom" class="btn-icon feature-icon" type="button" title="一番下へ" aria-label="ページの一番下へ">↓</button>
   </div>
+  <div id="keyword-notice" class="keyword-notice hidden" role="status" aria-live="polite"></div>
 </header>
 
 <div id="lib-error" class="banner-error hidden">
@@ -147,10 +154,11 @@
   </div>
 </div>
 
-<script src="db.js?v=39"></script>
-<script src="pdf-processor.js?v=39"></script>
-<script src="gemini-extract.js?v=39"></script>
-<script src="github-store.js?v=39"></script>
-<script src="app.js?v=39"></script>
+<script src="db.js?v=40"></script>
+<script src="pdf-processor.js?v=40"></script>
+<script src="gemini-extract.js?v=40"></script>
+<script src="github-store.js?v=40"></script>
+<script src="app.js?v=40"></script>
+<script src="features.js?v=40"></script>
 </body>
 </html>
