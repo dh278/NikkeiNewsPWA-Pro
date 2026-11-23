@@ -1,5 +1,4 @@
 :root { --reading-scale: 1; }
-/* zoom scales fixed pixel-size text and controls too, unlike font-size on body alone. */
 body { zoom: var(--reading-scale); }
 .app-header { flex-wrap: wrap; gap: 8px; }
 .header-actions { gap: 5px; }

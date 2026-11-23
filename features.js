@@ -69,7 +69,6 @@
     updateKeywordNotice();
   }
 
-  // app.js の一覧描画後にDOMベースで追加処理するため、内部のlet stateには依存しない。
   if (typeof window.renderList === "function") {
     const originalRenderList = window.renderList;
     window.renderList = function (...args) {
@@ -84,17 +83,23 @@
   });
 
   const fontButton = $("feature-font-size");
-  const fontLevels = ["100%", "115%", "130%", "145%"];
-  function applyFontScale(scale) {
-    const normalized = fontLevels.includes(scale) ? scale : "100%";
-    document.documentElement.style.setProperty("--reading-scale", normalized);
-    if (fontButton) fontButton.textContent = normalized === "100%" ? "Aa" : normalized;
-    localStorage.setItem(FONT_KEY, normalized);
+  const fontLevels = [
+    { label: "Aa", value: "1" },
+    { label: "115%", value: "1.15" },
+    { label: "130%", value: "1.30" },
+    { label: "145%", value: "1.45" }
+  ];
+  function applyFontScale(level) {
+    const found = fontLevels.find((item) => item.value === level) || fontLevels[0];
+    document.documentElement.style.setProperty("--reading-scale", found.value);
+    if (fontButton) fontButton.textContent = found.label;
+    localStorage.setItem(FONT_KEY, found.value);
   }
-  applyFontScale(localStorage.getItem(FONT_KEY) || "100%");
+  applyFontScale(localStorage.getItem(FONT_KEY) || "1");
   fontButton?.addEventListener("click", () => {
-    const current = localStorage.getItem(FONT_KEY) || "100%";
-    applyFontScale(fontLevels[(fontLevels.indexOf(current) + 1) % fontLevels.length]);
+    const current = localStorage.getItem(FONT_KEY) || "1";
+    const index = Math.max(0, fontLevels.findIndex((item) => item.value === current));
+    applyFontScale(fontLevels[(index + 1) % fontLevels.length].value);
   });
 
   $("feature-keywords")?.addEventListener("click", () => {
