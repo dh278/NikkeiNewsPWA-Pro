@@ -1,8 +1,10 @@
-:root { --reading-scale: 100%; }
-body { font-size: var(--reading-scale); }
+:root { --reading-scale: 1; }
+/* zoom scales fixed pixel-size text and controls too, unlike font-size on body alone. */
+body { zoom: var(--reading-scale); }
 .app-header { flex-wrap: wrap; gap: 8px; }
 .header-actions { gap: 5px; }
 .feature-icon { min-width: 36px; padding: 6px 8px; white-space: nowrap; }
 .keyword-notice { flex: 0 0 100%; background: #fff3cd; color: #664d03; border: 1px solid #ffecb5; border-radius: var(--radius); padding: 5px 9px; font-size: 12px; line-height: 1.4; }
 .feature-read-card { margin-top: 6px; padding: 5px 9px; border: 1px solid var(--line); background: #f5f7fa; color: var(--ink); font-size: 12px; }
+.feature-market-hidden { display: none !important; }
 @media (max-width: 700px) { .app-header { padding: 10px 12px; } .app-header h1 { display: none; } .header-actions { width: 100%; flex-wrap: wrap; } .header-search { flex: 1; min-width: 90px; } .feature-icon { min-width: 34px; padding: 6px; } }
